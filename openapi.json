@@ -1,0 +1,987 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "DrugTime API",
+    "version": "0.1.0",
+    "description": "Hợp đồng API giữa Backend API và các client (Mobile App, Admin Web).\n\nQuy ước chung:\n- Xác thực bằng header `Authorization: Bearer <token>` (Supabase access token hoặc app session token do `/auth` cấp).\n- Thời điểm dùng RFC 3339 / ISO 8601 có offset. Giờ uống (`HH:MM`) là giờ địa phương Asia/Ho_Chi_Minh.\n- Lỗi có body `{\"detail\": ...}`. Với 403, 404 và lỗi quy tắc nghiệp vụ 422, `detail` là một chuỗi mã ổn định (snake_case) để client so khớp. Với lỗi sai cấu trúc request 422, `detail` là mảng lỗi theo từng field (định dạng mặc định của FastAPI). Với 401, `detail` là câu mô tả, client không so khớp nội dung.\n- Endpoint chạm dữ liệu sức khỏe kiểm quyền và consent ở mỗi request; truy cập bị từ chối trả 403 và được ghi vào nhật ký truy cập."
+  },
+  "tags": [
+    {
+      "name": "medication",
+      "description": "Thuốc của người bệnh và lịch uống."
+    }
+  ],
+  "paths": {
+    "/medications": {
+      "post": {
+        "tags": [
+          "medication"
+        ],
+        "operationId": "createUserMedication",
+        "summary": "Thêm một thuốc vào danh sách của chính người gọi",
+        "description": "Tạo thuốc cho **chính người gọi** (không nhận `patient_id`). Thuốc phải chọn từ danh mục (`medication_id`). Mọi bản ghi được tạo trong một transaction.\n\n- `dosing_mode = scheduled`: bắt buộc `intake_times`; mỗi giờ tạo một lịch (`effective_from` = thời điểm request). `doses_per_day` = số giờ.\n- `dosing_mode = as_needed`: bắt buộc `max_doses_per_day`; không tạo lịch, không có nhắc và không bao giờ bị đánh dấu bỏ lỡ. `doses_per_day` = `max_doses_per_day`.\n\n**Idempotent theo `client_uuid`**: client sinh một `client_uuid` cho mỗi lần người dùng bấm lưu và dùng lại đúng giá trị đó khi gửi lại (mất mạng, hết thời gian chờ). Lần tạo đầu trả 201. Gửi lại cùng `client_uuid` của cùng người dùng trả 200 kèm thuốc đã tạo lần đầu, không tạo bản ghi mới; body của lần gửi sau bị bỏ qua, kể cả khi khác lần đầu. Hai request trùng gửi song song chỉ tạo một thuốc. `client_uuid` chỉ có nghĩa trong phạm vi một người dùng.\n\nThêm một thuốc đang có trong danh sách với `client_uuid` mới vẫn được phép và tạo bản ghi mới.\n\nPhân quyền: chỉ người có consent `health_data` còn hiệu lực được ghi; thiếu consent trả 403 `consent_revoked`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserMedicationCreate"
+              },
+              "examples": {
+                "scheduled": {
+                  "summary": "Thuốc uống theo giờ",
+                  "value": {
+                    "client_uuid": "6f1c2a9e-4b7d-4e0a-9c55-2d8f3b1a7e10",
+                    "medication_id": 1007,
+                    "quantity_per_dose": 1,
+                    "dosing_mode": "scheduled",
+                    "intake_times": [
+                      "08:00",
+                      "20:00"
+                    ],
+                    "intake_timing": "after_meal",
+                    "stock_quantity": 30
+                  }
+                },
+                "as_needed": {
+                  "summary": "Thuốc dùng khi cần",
+                  "value": {
+                    "client_uuid": "0b9e7d2c-81f4-4a3e-b6d1-5c2e9f8a4d33",
+                    "medication_id": 2051,
+                    "quantity_per_dose": 1,
+                    "dosing_mode": "as_needed",
+                    "max_doses_per_day": 3,
+                    "intake_timing": "after_meal"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Đã tạo. Body là thuốc vừa tạo.",
+            "headers": {
+              "Location": {
+                "description": "`/medications/{id}` của thuốc vừa tạo.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserMedication"
+                },
+                "examples": {
+                  "scheduled": {
+                    "value": {
+                      "id": 42,
+                      "medication": {
+                        "id": 1007,
+                        "name": "Amlodipin 5mg",
+                        "strength_text": "5 mg",
+                        "dosage_form": "Viên nén"
+                      },
+                      "dosing_mode": "scheduled",
+                      "quantity_per_dose": 1,
+                      "doses_per_day": 2,
+                      "intake_timing": "after_meal",
+                      "stock_quantity": 30,
+                      "has_interaction_data": true,
+                      "status": "active",
+                      "ended_at": null,
+                      "schedules": [
+                        {
+                          "id": 301,
+                          "intake_time": "08:00",
+                          "days_of_week": [
+                            1,
+                            2,
+                            3,
+                            4,
+                            5,
+                            6,
+                            7
+                          ],
+                          "reminder_enabled": true,
+                          "effective_from": "2026-10-01T09:15:02+07:00"
+                        },
+                        {
+                          "id": 302,
+                          "intake_time": "20:00",
+                          "days_of_week": [
+                            1,
+                            2,
+                            3,
+                            4,
+                            5,
+                            6,
+                            7
+                          ],
+                          "reminder_enabled": true,
+                          "effective_from": "2026-10-01T09:15:02+07:00"
+                        }
+                      ]
+                    }
+                  },
+                  "as_needed": {
+                    "value": {
+                      "id": 43,
+                      "medication": {
+                        "id": 2051,
+                        "name": "Ibuprofen 400mg",
+                        "strength_text": "400 mg",
+                        "dosage_form": "Viên nén bao phim"
+                      },
+                      "dosing_mode": "as_needed",
+                      "quantity_per_dose": 1,
+                      "doses_per_day": 3,
+                      "intake_timing": "after_meal",
+                      "stock_quantity": null,
+                      "has_interaction_data": false,
+                      "status": "active",
+                      "ended_at": null,
+                      "schedules": []
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Gửi lại với `client_uuid` đã dùng: không tạo gì mới. Body là thuốc đã tạo lần đầu, ở trạng thái hiện tại (có thể đã bị sửa hoặc ngừng sau đó).",
+            "headers": {
+              "Location": {
+                "description": "`/medications/{id}` của thuốc đã tạo lần đầu.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserMedication"
+                },
+                "examples": {
+                  "replay": {
+                    "value": {
+                      "id": 42,
+                      "medication": {
+                        "id": 1007,
+                        "name": "Amlodipin 5mg",
+                        "strength_text": "5 mg",
+                        "dosage_form": "Viên nén"
+                      },
+                      "dosing_mode": "scheduled",
+                      "quantity_per_dose": 1,
+                      "doses_per_day": 2,
+                      "intake_timing": "after_meal",
+                      "stock_quantity": 30,
+                      "has_interaction_data": true,
+                      "status": "active",
+                      "ended_at": null,
+                      "schedules": [
+                        {
+                          "id": 301,
+                          "intake_time": "08:00",
+                          "days_of_week": [
+                            1,
+                            2,
+                            3,
+                            4,
+                            5,
+                            6,
+                            7
+                          ],
+                          "reminder_enabled": true,
+                          "effective_from": "2026-10-01T09:15:02+07:00"
+                        },
+                        {
+                          "id": 302,
+                          "intake_time": "20:00",
+                          "days_of_week": [
+                            1,
+                            2,
+                            3,
+                            4,
+                            5,
+                            6,
+                            7
+                          ],
+                          "reminder_enabled": true,
+                          "effective_from": "2026-10-01T09:15:02+07:00"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          }
+        }
+      }
+    },
+    "/medications/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "Id thuốc của người bệnh (`UserMedication.id`), không phải id danh mục.",
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "medication"
+        ],
+        "operationId": "getUserMedication",
+        "summary": "Xem một thuốc của người bệnh",
+        "description": "Người được phép: chính người bệnh (có consent `health_data`); người thân có liên kết `active`, đang bật chia sẻ và người bệnh có consent `health_data` và `family_sharing`; admin. Người thân và admin được ghi nhật ký truy cập `allowed`.\n\n`schedules` chỉ gồm các lịch đang mở (chưa kết thúc), sắp theo `intake_time`. Thuốc đã ngừng có `schedules` rỗng.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Thuốc của người bệnh.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserMedication"
+                },
+                "examples": {
+                  "scheduled": {
+                    "value": {
+                      "id": 42,
+                      "medication": {
+                        "id": 1007,
+                        "name": "Amlodipin 5mg",
+                        "strength_text": "5 mg",
+                        "dosage_form": "Viên nén"
+                      },
+                      "dosing_mode": "scheduled",
+                      "quantity_per_dose": 1,
+                      "doses_per_day": 2,
+                      "intake_timing": "after_meal",
+                      "stock_quantity": 30,
+                      "has_interaction_data": true,
+                      "status": "active",
+                      "ended_at": null,
+                      "schedules": [
+                        {
+                          "id": 301,
+                          "intake_time": "08:00",
+                          "days_of_week": [
+                            1,
+                            2,
+                            3,
+                            4,
+                            5,
+                            6,
+                            7
+                          ],
+                          "reminder_enabled": true,
+                          "effective_from": "2026-10-01T09:15:02+07:00"
+                        },
+                        {
+                          "id": 302,
+                          "intake_time": "20:00",
+                          "days_of_week": [
+                            1,
+                            2,
+                            3,
+                            4,
+                            5,
+                            6,
+                            7
+                          ],
+                          "reminder_enabled": true,
+                          "effective_from": "2026-10-01T09:15:02+07:00"
+                        }
+                      ]
+                    }
+                  },
+                  "stopped": {
+                    "value": {
+                      "id": 42,
+                      "medication": {
+                        "id": 1007,
+                        "name": "Amlodipin 5mg",
+                        "strength_text": "5 mg",
+                        "dosage_form": "Viên nén"
+                      },
+                      "dosing_mode": "scheduled",
+                      "quantity_per_dose": 1,
+                      "doses_per_day": 2,
+                      "intake_timing": "after_meal",
+                      "stock_quantity": 30,
+                      "has_interaction_data": true,
+                      "status": "stopped",
+                      "ended_at": "2026-10-05T07:30:00+07:00",
+                      "schedules": []
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/UserMedicationNotFound"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "medication"
+        ],
+        "operationId": "updateUserMedication",
+        "summary": "Sửa hoặc ngừng một thuốc của chính người gọi",
+        "description": "Chỉ **chính người bệnh** được sửa. Người thân và admin, dù xem được thuốc, gọi endpoint này nhận 403 `khong_co_quyen` và được ghi nhật ký `denied`.\n\nGửi một hoặc nhiều field; field không gửi giữ nguyên. Quy tắc:\n\n| Muốn | Gửi | Kết quả |\n|---|---|---|\n| Đổi liều mỗi lần | `quantity_per_dose` | Lịch không đổi |\n| Đổi cách uống, tồn kho | `intake_timing`, `stock_quantity` (gửi `null` để xóa giá trị) | Lịch không đổi |\n| Đổi giờ hoặc số lần/ngày (thuốc đang `scheduled`) | `intake_times` | Đóng mọi lịch đang mở, tạo lịch mới cho từng giờ với `effective_from` = thời điểm request, giữ `days_of_week` của lịch cũ. `doses_per_day` = số giờ mới |\n| Đổi số lần tối đa (thuốc đang `as_needed`) | `max_doses_per_day` | `doses_per_day` = giá trị mới |\n| Chuyển sang dùng khi cần | `dosing_mode: as_needed` + `max_doses_per_day` | Đóng mọi lịch đang mở |\n| Chuyển sang uống theo giờ | `dosing_mode: scheduled` + `intake_times` | Tạo lịch mới, `days_of_week` = cả tuần |\n| Ngừng thuốc | chỉ `stopped: true` | Thuốc và mọi lịch đang mở kết thúc tại thời điểm request |\n\nLịch cũ chỉ bị đóng, không bị xóa. Đổi ngày uống trong tuần không thuộc endpoint này.\n\nTrả 422 `medication_rule_violation` khi: body rỗng; `intake_times` gửi cho thuốc sẽ là `as_needed` hoặc `max_doses_per_day` gửi cho thuốc sẽ là `scheduled`; đổi `dosing_mode` mà thiếu field bắt buộc của chế độ mới; `stopped` đi kèm field khác. Thuốc đã ngừng: gửi lại `stopped: true` trả 200 và không đổi gì; gửi field khác trả 422 `medication_stopped`.\n\nIdempotent theo nội dung: gửi lại cùng body cho cùng kết quả cuối, trừ `intake_times` (mỗi lần gửi tạo lại lịch với `effective_from` mới; vô hại với nhắc lịch nhưng client không nên tự gửi lại khi không cần).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserMedicationUpdate"
+              },
+              "examples": {
+                "change_dose": {
+                  "summary": "Đổi liều",
+                  "value": {
+                    "quantity_per_dose": 2
+                  }
+                },
+                "change_times": {
+                  "summary": "Đổi giờ, từ 2 lên 3 lần/ngày",
+                  "value": {
+                    "intake_times": [
+                      "07:00",
+                      "12:00",
+                      "19:00"
+                    ]
+                  }
+                },
+                "to_as_needed": {
+                  "summary": "Chuyển sang dùng khi cần",
+                  "value": {
+                    "dosing_mode": "as_needed",
+                    "max_doses_per_day": 2
+                  }
+                },
+                "clear_stock": {
+                  "summary": "Xóa tồn kho",
+                  "value": {
+                    "stock_quantity": null
+                  }
+                },
+                "stop": {
+                  "summary": "Ngừng thuốc",
+                  "value": {
+                    "stopped": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Thuốc sau khi sửa.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserMedication"
+                },
+                "examples": {
+                  "scheduled": {
+                    "value": {
+                      "id": 42,
+                      "medication": {
+                        "id": 1007,
+                        "name": "Amlodipin 5mg",
+                        "strength_text": "5 mg",
+                        "dosage_form": "Viên nén"
+                      },
+                      "dosing_mode": "scheduled",
+                      "quantity_per_dose": 1,
+                      "doses_per_day": 2,
+                      "intake_timing": "after_meal",
+                      "stock_quantity": 30,
+                      "has_interaction_data": true,
+                      "status": "active",
+                      "ended_at": null,
+                      "schedules": [
+                        {
+                          "id": 301,
+                          "intake_time": "08:00",
+                          "days_of_week": [
+                            1,
+                            2,
+                            3,
+                            4,
+                            5,
+                            6,
+                            7
+                          ],
+                          "reminder_enabled": true,
+                          "effective_from": "2026-10-01T09:15:02+07:00"
+                        },
+                        {
+                          "id": 302,
+                          "intake_time": "20:00",
+                          "days_of_week": [
+                            1,
+                            2,
+                            3,
+                            4,
+                            5,
+                            6,
+                            7
+                          ],
+                          "reminder_enabled": true,
+                          "effective_from": "2026-10-01T09:15:02+07:00"
+                        }
+                      ]
+                    }
+                  },
+                  "stopped": {
+                    "value": {
+                      "id": 42,
+                      "medication": {
+                        "id": 1007,
+                        "name": "Amlodipin 5mg",
+                        "strength_text": "5 mg",
+                        "dosage_form": "Viên nén"
+                      },
+                      "dosing_mode": "scheduled",
+                      "quantity_per_dose": 1,
+                      "doses_per_day": 2,
+                      "intake_timing": "after_meal",
+                      "stock_quantity": 30,
+                      "has_interaction_data": true,
+                      "status": "stopped",
+                      "ended_at": "2026-10-05T07:30:00+07:00",
+                      "schedules": []
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/UserMedicationNotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Supabase access token hoặc app session token."
+      }
+    },
+    "schemas": {
+      "DosingMode": {
+        "type": "string",
+        "enum": [
+          "scheduled",
+          "as_needed"
+        ],
+        "description": "`scheduled`: uống theo giờ cố định. `as_needed`: dùng khi cần."
+      },
+      "IntakeTiming": {
+        "type": "string",
+        "enum": [
+          "before_meal",
+          "after_meal",
+          "any_time"
+        ],
+        "description": "Cách uống: trước ăn, sau ăn, không liên quan bữa ăn."
+      },
+      "IntakeTime": {
+        "type": "string",
+        "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+        "example": "08:00",
+        "description": "Giờ uống `HH:MM` (24 giờ), giờ Asia/Ho_Chi_Minh."
+      },
+      "IntakeTimes": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/IntakeTime"
+        },
+        "minItems": 1,
+        "maxItems": 6,
+        "uniqueItems": true,
+        "description": "1–6 giờ uống, không trùng nhau. Server lưu theo thứ tự tăng dần."
+      },
+      "QuantityPerDose": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "maximum": 10,
+        "description": "Số đơn vị mỗi lần uống (viên, gói, ml…), > 0 và ≤ 10; cho phép số lẻ, ví dụ 0.5."
+      },
+      "MaxDosesPerDay": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 6,
+        "description": "Số lần tối đa mỗi ngày của thuốc dùng khi cần."
+      },
+      "StockQuantity": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "minimum": 0,
+        "maximum": 9999,
+        "description": "Số đơn vị còn lại (theo đơn vị đếm liều của thuốc). `null` = không theo dõi tồn kho. Server không tự trừ khi uống."
+      },
+      "UserMedicationCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "client_uuid",
+          "medication_id",
+          "quantity_per_dose",
+          "dosing_mode"
+        ],
+        "properties": {
+          "client_uuid": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+            "description": "Khóa chống tạo trùng do client sinh (UUID). Xem mô tả `POST /medications`."
+          },
+          "medication_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "description": "Id thuốc trong danh mục. Phải tồn tại và chưa bị xóa mềm, nếu không trả 422 `catalog_medication_not_found`."
+          },
+          "quantity_per_dose": {
+            "$ref": "#/components/schemas/QuantityPerDose"
+          },
+          "dosing_mode": {
+            "$ref": "#/components/schemas/DosingMode"
+          },
+          "intake_times": {
+            "$ref": "#/components/schemas/IntakeTimes",
+            "description": "Bắt buộc khi `scheduled`; không được gửi khi `as_needed`."
+          },
+          "days_of_week": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 7
+            },
+            "minItems": 1,
+            "maxItems": 7,
+            "uniqueItems": true,
+            "description": "Ngày trong tuần theo ISO 8601: 1 = Thứ Hai … 7 = Chủ Nhật. Chỉ dùng khi `scheduled`, áp dụng cho mọi giờ uống; bỏ trống = cả tuần. Không được gửi khi `as_needed`."
+          },
+          "max_doses_per_day": {
+            "$ref": "#/components/schemas/MaxDosesPerDay",
+            "description": "Bắt buộc khi `as_needed`; không được gửi khi `scheduled`."
+          },
+          "intake_timing": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IntakeTiming"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Tùy chọn."
+          },
+          "stock_quantity": {
+            "$ref": "#/components/schemas/StockQuantity"
+          }
+        }
+      },
+      "UserMedicationUpdate": {
+        "type": "object",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "description": "Xem bảng quy tắc ở mô tả `PATCH /medications/{id}`. Không có `medication_id` (đổi thuốc = ngừng thuốc cũ và thêm thuốc mới) và không có `days_of_week`.",
+        "properties": {
+          "quantity_per_dose": {
+            "$ref": "#/components/schemas/QuantityPerDose"
+          },
+          "dosing_mode": {
+            "$ref": "#/components/schemas/DosingMode"
+          },
+          "intake_times": {
+            "$ref": "#/components/schemas/IntakeTimes"
+          },
+          "max_doses_per_day": {
+            "$ref": "#/components/schemas/MaxDosesPerDay"
+          },
+          "intake_timing": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IntakeTiming"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`null` để xóa giá trị."
+          },
+          "stock_quantity": {
+            "$ref": "#/components/schemas/StockQuantity"
+          },
+          "stopped": {
+            "type": "boolean",
+            "const": true,
+            "description": "Chỉ nhận `true`, và phải gửi một mình. Không có thao tác bỏ ngừng; muốn dùng lại thì thêm thuốc mới."
+          }
+        }
+      },
+      "CatalogMedicationSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "strength_text",
+          "dosage_form"
+        ],
+        "description": "Thông tin hiển thị của thuốc trong danh mục.",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "strength_text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dosage_form": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "MedicationSchedule": {
+        "type": "object",
+        "required": [
+          "id",
+          "intake_time",
+          "days_of_week",
+          "reminder_enabled",
+          "effective_from"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "intake_time": {
+            "$ref": "#/components/schemas/IntakeTime"
+          },
+          "days_of_week": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 7
+            },
+            "minItems": 1,
+            "maxItems": 7,
+            "uniqueItems": true,
+            "description": "Ngày trong tuần theo ISO 8601: 1 = Thứ Hai … 7 = Chủ Nhật."
+          },
+          "reminder_enabled": {
+            "type": "boolean"
+          },
+          "effective_from": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Lượt uống trước mốc này không thuộc lịch."
+          }
+        }
+      },
+      "UserMedication": {
+        "type": "object",
+        "required": [
+          "id",
+          "medication",
+          "dosing_mode",
+          "quantity_per_dose",
+          "doses_per_day",
+          "intake_timing",
+          "stock_quantity",
+          "has_interaction_data",
+          "status",
+          "ended_at",
+          "schedules"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "medication": {
+            "$ref": "#/components/schemas/CatalogMedicationSummary"
+          },
+          "dosing_mode": {
+            "$ref": "#/components/schemas/DosingMode"
+          },
+          "quantity_per_dose": {
+            "type": "number"
+          },
+          "doses_per_day": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "`scheduled`: số lần uống mỗi ngày (= số giờ). `as_needed`: số lần tối đa mỗi ngày."
+          },
+          "intake_timing": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IntakeTiming"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stock_quantity": {
+            "$ref": "#/components/schemas/StockQuantity"
+          },
+          "has_interaction_data": {
+            "type": "boolean",
+            "description": "`false` khi thuốc chưa có dữ liệu hoạt chất để kiểm tra tương tác."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "stopped"
+            ]
+          },
+          "ended_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Thời điểm ngừng; `null` khi đang dùng."
+          },
+          "schedules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MedicationSchedule"
+            },
+            "description": "Lịch đang mở, sắp theo `intake_time`. Rỗng với `as_needed` và với thuốc đã ngừng."
+          }
+        }
+      },
+      "ErrorDetail": {
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "properties": {
+          "detail": {
+            "type": "string"
+          }
+        }
+      },
+      "ValidationErrorItem": {
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "properties": {
+          "loc": {
+            "type": "array",
+            "items": {
+              "type": [
+                "string",
+                "integer"
+              ]
+            }
+          },
+          "msg": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        }
+      },
+      "ValidationError": {
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "properties": {
+          "detail": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ValidationErrorItem"
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Thiếu header `Authorization`, token sai hoặc hết hạn, hoặc tài khoản đã bị xóa. `detail` là câu mô tả, client không so khớp nội dung.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "example": {
+              "detail": "Missing bearer token"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Không có quyền. `detail`:\n- `consent_revoked`: người bệnh tự truy cập nhưng không còn consent `health_data`.\n- `khong_co_quyen`: người khác không có quyền với thuốc này, hoặc người thân/admin cố ghi. Lần truy cập được ghi `denied` vào nhật ký truy cập.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "examples": {
+              "no_access": {
+                "value": {
+                  "detail": "khong_co_quyen"
+                }
+              },
+              "consent_revoked": {
+                "value": {
+                  "detail": "consent_revoked"
+                }
+              }
+            }
+          }
+        }
+      },
+      "UserMedicationNotFound": {
+        "description": "Không có thuốc nào với id này.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "example": {
+              "detail": "user_medication_not_found"
+            }
+          }
+        }
+      },
+      "UnprocessableEntity": {
+        "description": "Dữ liệu không hợp lệ; không có gì được ghi.\n\n- Sai cấu trúc hoặc ràng buộc từng field (thiếu field bắt buộc, sai kiểu, ngoài khoảng, giờ sai định dạng, giờ trùng, field lạ): `ValidationError`.\n- Vi phạm quy tắc nghiệp vụ: `ErrorDetail` với `detail` là một trong `catalog_medication_not_found`, `medication_rule_violation`, `medication_stopped`.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              ]
+            },
+            "examples": {
+              "field": {
+                "summary": "Sai field",
+                "value": {
+                  "detail": [
+                    {
+                      "loc": [
+                        "body",
+                        "quantity_per_dose"
+                      ],
+                      "msg": "Input should be greater than 0",
+                      "type": "greater_than"
+                    }
+                  ]
+                }
+              },
+              "catalog": {
+                "summary": "Thuốc không có trong danh mục",
+                "value": {
+                  "detail": "catalog_medication_not_found"
+                }
+              },
+              "rule": {
+                "summary": "as_needed nhưng gửi giờ uống",
+                "value": {
+                  "detail": "medication_rule_violation"
+                }
+              },
+              "stopped": {
+                "summary": "Sửa thuốc đã ngừng",
+                "value": {
+                  "detail": "medication_stopped"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
