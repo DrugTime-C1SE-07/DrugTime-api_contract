@@ -3,15 +3,484 @@
   "info": {
     "title": "DrugTime API",
     "version": "0.1.0",
-    "description": "Hợp đồng API giữa Backend API và các client (Mobile App, Admin Web).\n\nQuy ước chung:\n- Xác thực bằng header `Authorization: Bearer <token>` (Supabase access token hoặc app session token do `/auth` cấp).\n- Thời điểm dùng RFC 3339 / ISO 8601 có offset. Giờ uống (`HH:MM`) là giờ địa phương Asia/Ho_Chi_Minh.\n- Lỗi có body `{\"detail\": ...}`. Với 403, 404 và lỗi quy tắc nghiệp vụ 422, `detail` là một chuỗi mã ổn định (snake_case) để client so khớp. Với lỗi sai cấu trúc request 422, `detail` là mảng lỗi theo từng field (định dạng mặc định của FastAPI). Với 401, `detail` là câu mô tả, client không so khớp nội dung.\n- Endpoint chạm dữ liệu sức khỏe kiểm quyền và consent ở mỗi request; truy cập bị từ chối trả 403 và được ghi vào nhật ký truy cập."
+    "description": "Hợp đồng API giữa Backend API và các client (Mobile App, Admin Web).\n\nQuy ước chung:\n- Xác thực bằng header `Authorization: Bearer <token>`, trong đó token là **app session token** do `/auth` cấp (`session.access_token`). Token do Supabase Auth cấp không được chấp nhận làm bearer (401). Phiên `mobile` sống 10 ngày, không có refresh: hết hạn thì đăng nhập lại. Phiên `admin_web` hết hạn sau 20 phút kể từ lần cấp gần nhất; gia hạn bằng `POST /auth/admin/session/refresh`.\n- Thời điểm dùng RFC 3339 / ISO 8601 có offset. Giờ uống (`HH:MM`) là giờ địa phương Asia/Ho_Chi_Minh.\n- Lỗi có body `{\"detail\": ...}`. Với 403, 404, 429, 503 và lỗi quy tắc nghiệp vụ 422, `detail` là một chuỗi mã ổn định (snake_case) để client so khớp. Với lỗi sai cấu trúc request 422, `detail` là mảng lỗi theo từng field (định dạng mặc định của FastAPI). Với 401, `detail` là câu mô tả, client không so khớp nội dung.\n- Endpoint chạm dữ liệu sức khỏe kiểm quyền và consent ở mỗi request; truy cập bị từ chối trả 403 và được ghi vào nhật ký truy cập."
   },
   "tags": [
+    {
+      "name": "identity",
+      "description": "Đăng nhập, phiên làm việc và hồ sơ cơ bản của tài khoản."
+    },
     {
       "name": "medication",
       "description": "Thuốc của người bệnh và lịch uống."
     }
   ],
   "paths": {
+    "/auth/mobile/otp": {
+      "post": {
+        "tags": [
+          "identity"
+        ],
+        "operationId": "requestMobileOtp",
+        "summary": "Gửi mã OTP đăng nhập Mobile App",
+        "description": "Gửi mã OTP 6 số qua SMS (`phone`) hoặc email (`email`). Tài khoản chưa tồn tại sẽ được tạo ở lần xác thực OTP thành công đầu tiên. Gửi lại khi người dùng bấm \"Gửi lại mã\": mã cũ có thể hết hiệu lực. Không tiết lộ tài khoản đã tồn tại hay chưa.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OtpRequest"
+              },
+              "examples": {
+                "phone": {
+                  "value": {
+                    "phone": "0912345678"
+                  }
+                },
+                "email": {
+                  "value": {
+                    "email": "lan.nguyen@example.com"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Đã yêu cầu gửi mã. Không có body."
+          },
+          "422": {
+            "description": "Dữ liệu không hợp lệ; không có gì được ghi.\n\n- Sai cấu trúc (thiếu field bắt buộc, sai kiểu, ngày sai định dạng): `ValidationError`.\n- Vi phạm quy tắc: `ErrorDetail` với `detail` là một trong:\n- `login_identifier_required`: không gửi, hoặc gửi cả hai, `phone` và `email`.\n- `invalid_email`: email sai định dạng.\n- `invalid_phone`: số điện thoại sai định dạng.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    }
+                  ]
+                },
+                "examples": {
+                  "login_identifier_required": {
+                    "value": {
+                      "detail": "login_identifier_required"
+                    }
+                  },
+                  "invalid_email": {
+                    "value": {
+                      "detail": "invalid_email"
+                    }
+                  },
+                  "invalid_phone": {
+                    "value": {
+                      "detail": "invalid_phone"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/AuthRateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/AuthProviderUnavailable"
+          }
+        }
+      }
+    },
+    "/auth/mobile/verify": {
+      "post": {
+        "tags": [
+          "identity"
+        ],
+        "operationId": "verifyMobileOtp",
+        "summary": "Xác thực OTP và mở phiên Mobile App",
+        "description": "Xác thực mã OTP. Thành công thì trả phiên `mobile` (10 ngày). Lần đầu một số điện thoại hoặc email đăng nhập, server tạo tài khoản tối thiểu với `profile_complete = false`.\n\nClient lưu `session` vào bộ nhớ an toàn; mọi request sau gửi `Authorization: Bearer <session.access_token>`. Không có refresh: hết `expires_at` hoặc nhận 401 thì đăng nhập lại.\n\nTài khoản quản trị không đăng nhập được qua Mobile App (403 `admin_must_use_web`).",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OtpVerifyRequest"
+              },
+              "examples": {
+                "phone": {
+                  "value": {
+                    "phone": "+84912345678",
+                    "token": "123456"
+                  }
+                },
+                "email": {
+                  "value": {
+                    "email": "lan.nguyen@example.com",
+                    "token": "123456"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đăng nhập thành công.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileAuthResult"
+                },
+                "examples": {
+                  "new_user": {
+                    "summary": "Người mới, chưa có hồ sơ",
+                    "value": {
+                      "user_id": "8d3f2c1a-5b6e-4f70-9a81-2c3d4e5f6a7b",
+                      "session": {
+                        "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.<payload>.<signature>",
+                        "token_type": "bearer",
+                        "session_type": "mobile",
+                        "expires_at": "2026-10-12T09:15:02+07:00",
+                        "expires_in": 864000
+                      },
+                      "profile_complete": false
+                    }
+                  },
+                  "returning_user": {
+                    "summary": "Người đã có hồ sơ",
+                    "value": {
+                      "user_id": "8d3f2c1a-5b6e-4f70-9a81-2c3d4e5f6a7b",
+                      "session": {
+                        "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.<payload>.<signature>",
+                        "token_type": "bearer",
+                        "session_type": "mobile",
+                        "expires_at": "2026-10-12T09:15:02+07:00",
+                        "expires_in": 864000
+                      },
+                      "profile_complete": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthUnauthorized"
+          },
+          "403": {
+            "description": "`admin_must_use_web`: tài khoản quản trị phải đăng nhập qua Admin Web.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "admin_must_use_web"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dữ liệu không hợp lệ; không có gì được ghi.\n\n- Sai cấu trúc (thiếu field bắt buộc, sai kiểu, ngày sai định dạng): `ValidationError`.\n- Vi phạm quy tắc: `ErrorDetail` với `detail` là một trong:\n- `login_identifier_required`: không gửi, hoặc gửi cả hai, `phone` và `email`.\n- `invalid_email`: email sai định dạng.\n- `invalid_phone`: số điện thoại sai định dạng.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    }
+                  ]
+                },
+                "examples": {
+                  "login_identifier_required": {
+                    "value": {
+                      "detail": "login_identifier_required"
+                    }
+                  },
+                  "invalid_email": {
+                    "value": {
+                      "detail": "invalid_email"
+                    }
+                  },
+                  "invalid_phone": {
+                    "value": {
+                      "detail": "invalid_phone"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/AuthRateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/AuthProviderUnavailable"
+          }
+        }
+      }
+    },
+    "/auth/profile": {
+      "post": {
+        "tags": [
+          "identity"
+        ],
+        "operationId": "completeProfile",
+        "summary": "Hoàn thiện hồ sơ cơ bản của chính người gọi",
+        "description": "Ghi họ tên, ngày sinh, giới tính cho tài khoản đang đăng nhập. Gọi lại được: lần sau ghi đè lần trước. Sau khi thành công, `profile_complete` của các lần đăng nhập sau là `true`; client tự cập nhật phiên đang lưu, không cần đăng nhập lại.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompleteProfileRequest"
+              },
+              "example": {
+                "ho_ten": "Nguyễn Thị Lan",
+                "ngay_sinh": "1958-04-12",
+                "gioi_tinh": "nu"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Đã lưu. Không có body."
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthUnauthorized"
+          },
+          "422": {
+            "description": "Dữ liệu không hợp lệ; không có gì được ghi.\n\n- Sai cấu trúc (thiếu field bắt buộc, sai kiểu, ngày sai định dạng): `ValidationError`.\n- Vi phạm quy tắc: `ErrorDetail` với `detail` là một trong:\n- `invalid_full_name`: `ho_ten` rỗng.\n- `invalid_gender`: `gioi_tinh` ngoài danh sách cho phép.\n- `invalid_date_of_birth`: `ngay_sinh` sau ngày hiện tại.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    }
+                  ]
+                },
+                "examples": {
+                  "invalid_full_name": {
+                    "value": {
+                      "detail": "invalid_full_name"
+                    }
+                  },
+                  "invalid_gender": {
+                    "value": {
+                      "detail": "invalid_gender"
+                    }
+                  },
+                  "invalid_date_of_birth": {
+                    "value": {
+                      "detail": "invalid_date_of_birth"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/admin/login": {
+      "post": {
+        "tags": [
+          "identity"
+        ],
+        "operationId": "loginAdmin",
+        "summary": "Đăng nhập Admin Web bằng email và mật khẩu",
+        "description": "Chỉ tài khoản có vai trò quản trị đăng nhập được. Thành công thì trả phiên `admin_web` (20 phút). Admin Web gọi endpoint này từ phía server (route handler) và giữ `session.access_token` trong cookie `httpOnly`; token không được đưa xuống JavaScript của trình duyệt.\n\nSai email hoặc mật khẩu, hoặc tài khoản không tồn tại, đều trả cùng một 401 để không lộ email nào đã có tài khoản.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminLoginRequest"
+              },
+              "example": {
+                "email": "admin@drugtime.vn",
+                "password": "••••••••"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đăng nhập thành công.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminAuthResult"
+                },
+                "example": {
+                  "user_id": "8d3f2c1a-5b6e-4f70-9a81-2c3d4e5f6a7b",
+                  "session": {
+                    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.<payload>.<signature>",
+                    "token_type": "bearer",
+                    "session_type": "admin_web",
+                    "expires_at": "2026-10-02T09:35:02+07:00",
+                    "expires_in": 1200
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthUnauthorized"
+          },
+          "403": {
+            "description": "`admin_required`: đăng nhập đúng nhưng tài khoản không có vai trò quản trị.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "admin_required"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dữ liệu không hợp lệ; không có gì được ghi.\n\n- Sai cấu trúc (thiếu field bắt buộc, sai kiểu, ngày sai định dạng): `ValidationError`.\n- Vi phạm quy tắc: `ErrorDetail` với `detail` là một trong:\n- `invalid_email`: email sai định dạng.\n- `password_too_short`: mật khẩu ít hơn 8 ký tự.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    }
+                  ]
+                },
+                "examples": {
+                  "invalid_email": {
+                    "value": {
+                      "detail": "invalid_email"
+                    }
+                  },
+                  "password_too_short": {
+                    "value": {
+                      "detail": "password_too_short"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/AuthRateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/AuthProviderUnavailable"
+          }
+        }
+      }
+    },
+    "/auth/admin/session/refresh": {
+      "post": {
+        "tags": [
+          "identity"
+        ],
+        "operationId": "refreshAdminSession",
+        "summary": "Gia hạn phiên Admin Web",
+        "description": "Đổi một phiên `admin_web` còn hạn lấy phiên mới 20 phút. Server đọc lại tài khoản từ DB: tài khoản bị xóa trả 401, bị gỡ vai trò quản trị trả 403. Admin Web gọi khi người dùng còn thao tác và phiên sắp hết hạn; không thao tác quá 20 phút thì phiên hết hạn và phải đăng nhập lại. Token cũ vẫn dùng được tới `expires_at` của nó.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminSessionRefreshRequest"
+              },
+              "example": {
+                "session_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.<payload>.<signature>"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Phiên mới.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminAuthResult"
+                },
+                "example": {
+                  "user_id": "8d3f2c1a-5b6e-4f70-9a81-2c3d4e5f6a7b",
+                  "session": {
+                    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.<payload>.<signature>",
+                    "token_type": "bearer",
+                    "session_type": "admin_web",
+                    "expires_at": "2026-10-02T09:35:02+07:00",
+                    "expires_in": 1200
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthUnauthorized"
+          },
+          "403": {
+            "description": "`admin_required`: tài khoản không còn vai trò quản trị.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "admin_required"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Thiếu `session_token` hoặc sai kiểu: `ValidationError`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                "example": {
+                  "detail": [
+                    {
+                      "loc": [
+                        "body",
+                        "session_token"
+                      ],
+                      "msg": "Field required",
+                      "type": "missing"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/medications": {
       "post": {
         "tags": [
@@ -524,7 +993,7 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT",
-        "description": "Supabase access token hoặc app session token."
+        "description": "App session token (`session.access_token`) do `/auth/mobile/verify`, `/auth/admin/login` hoặc `/auth/admin/session/refresh` cấp. Token Supabase bị từ chối (401)."
       }
     },
     "schemas": {
@@ -879,6 +1348,239 @@
             }
           }
         }
+      },
+      "Email": {
+        "type": "string",
+        "format": "email",
+        "maxLength": 254,
+        "description": "Địa chỉ email. Server bỏ khoảng trắng đầu/cuối và chuyển về chữ thường.",
+        "examples": [
+          "lan.nguyen@example.com"
+        ]
+      },
+      "PhoneNumber": {
+        "type": "string",
+        "description": "Số điện thoại. Chấp nhận E.164 (`+84912345678`) hoặc số Việt Nam bắt đầu bằng `0` (`0912345678`, server đổi thành `+84912345678`). Khoảng trắng và `-` bị bỏ qua. Sau chuẩn hóa phải khớp `^\\+[0-9]{8,15}$`.",
+        "examples": [
+          "+84912345678",
+          "0912345678"
+        ]
+      },
+      "Gender": {
+        "type": "string",
+        "enum": [
+          "nam",
+          "nu",
+          "khac",
+          "male",
+          "female",
+          "other"
+        ],
+        "description": "Giới tính, không phân biệt hoa thường. Client mới gửi `nam`, `nu` hoặc `khac`; `male`, `female`, `other` được nhận để tương thích."
+      },
+      "FullName": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Họ tên. Không được rỗng sau khi bỏ khoảng trắng đầu/cuối.",
+        "examples": [
+          "Nguyễn Thị Lan"
+        ]
+      },
+      "DateOfBirth": {
+        "type": "string",
+        "format": "date",
+        "description": "Ngày sinh `YYYY-MM-DD`; không được sau ngày hiện tại (Asia/Ho_Chi_Minh).",
+        "examples": [
+          "1958-04-12"
+        ]
+      },
+      "OtpRequest": {
+        "type": "object",
+        "description": "Gửi **đúng một** trong `phone` hoặc `email` (field kia bỏ trống, `null` hoặc chuỗi rỗng).",
+        "properties": {
+          "phone": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PhoneNumber"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "email": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Email"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "OtpVerifyRequest": {
+        "type": "object",
+        "required": [
+          "token"
+        ],
+        "description": "Gửi đúng một trong `phone` hoặc `email`, trùng với giá trị đã dùng ở `POST /auth/mobile/otp`.",
+        "properties": {
+          "phone": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PhoneNumber"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "email": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Email"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "token": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Mã OTP người dùng nhận được (6 chữ số).",
+            "examples": [
+              "123456"
+            ]
+          }
+        }
+      },
+      "AdminLoginRequest": {
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "properties": {
+          "email": {
+            "$ref": "#/components/schemas/Email"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 8,
+            "writeOnly": true
+          }
+        }
+      },
+      "AdminSessionRefreshRequest": {
+        "type": "object",
+        "required": [
+          "session_token"
+        ],
+        "properties": {
+          "session_token": {
+            "type": "string",
+            "description": "`session.access_token` của phiên `admin_web` còn hạn."
+          }
+        }
+      },
+      "CompleteProfileRequest": {
+        "type": "object",
+        "required": [
+          "ho_ten",
+          "ngay_sinh",
+          "gioi_tinh"
+        ],
+        "properties": {
+          "ho_ten": {
+            "$ref": "#/components/schemas/FullName"
+          },
+          "ngay_sinh": {
+            "$ref": "#/components/schemas/DateOfBirth"
+          },
+          "gioi_tinh": {
+            "$ref": "#/components/schemas/Gender"
+          }
+        }
+      },
+      "SessionType": {
+        "type": "string",
+        "enum": [
+          "mobile",
+          "admin_web"
+        ]
+      },
+      "AppSession": {
+        "type": "object",
+        "required": [
+          "access_token",
+          "token_type",
+          "session_type",
+          "expires_at",
+          "expires_in"
+        ],
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "description": "Gửi trong `Authorization: Bearer <access_token>`. Client coi là chuỗi mờ, không giải mã để lấy thông tin."
+          },
+          "token_type": {
+            "type": "string",
+            "const": "bearer"
+          },
+          "session_type": {
+            "$ref": "#/components/schemas/SessionType"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Thời điểm hết hạn, có offset."
+          },
+          "expires_in": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Số giây còn lại tính từ lúc cấp."
+          }
+        }
+      },
+      "MobileAuthResult": {
+        "type": "object",
+        "required": [
+          "user_id",
+          "session",
+          "profile_complete"
+        ],
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "session": {
+            "$ref": "#/components/schemas/AppSession"
+          },
+          "profile_complete": {
+            "type": "boolean",
+            "description": "`false` khi tài khoản chưa có họ tên: client đưa người dùng tới màn hoàn thiện hồ sơ (`POST /auth/profile`) trước khi vào trang chính."
+          }
+        }
+      },
+      "AdminAuthResult": {
+        "type": "object",
+        "required": [
+          "user_id",
+          "session"
+        ],
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "session": {
+            "$ref": "#/components/schemas/AppSession"
+          }
+        }
       }
     },
     "responses": {
@@ -978,6 +1680,45 @@
                   "detail": "medication_stopped"
                 }
               }
+            }
+          }
+        }
+      },
+      "AuthUnauthorized": {
+        "description": "Không xác thực được: sai thông tin đăng nhập, mã OTP sai hoặc hết hạn, token phiên sai/hết hạn, hoặc tài khoản đã bị xóa. `detail` là câu mô tả, client không so khớp nội dung và không hiển thị nguyên văn. Phản hồi không bao giờ chứa nội dung lỗi gốc của Supabase Auth.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "example": {
+              "detail": "Invalid credentials"
+            }
+          }
+        }
+      },
+      "AuthRateLimited": {
+        "description": "Gửi quá nhanh hoặc quá nhiều lần; thử lại sau ít phút.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "example": {
+              "detail": "rate_limited"
+            }
+          }
+        }
+      },
+      "AuthProviderUnavailable": {
+        "description": "Dịch vụ xác thực (Supabase Auth) không phản hồi hoặc lỗi phía máy chủ; thử lại sau. Không có gì được ghi.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "example": {
+              "detail": "auth_provider_unavailable"
             }
           }
         }
