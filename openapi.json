@@ -3,7 +3,7 @@
   "info": {
     "title": "DrugTime API",
     "version": "0.1.0",
-    "description": "Hợp đồng API giữa Backend API và các client (Mobile App, Admin Web).\n\nQuy ước chung:\n- Xác thực bằng header `Authorization: Bearer <token>`, trong đó token là **app session token** do `/auth` cấp (`session.access_token`). Token do Supabase Auth cấp không được chấp nhận làm bearer (401). Phiên `mobile` sống 10 ngày, không có refresh: hết hạn thì đăng nhập lại. Phiên `admin_web` hết hạn sau 20 phút kể từ lần cấp gần nhất; gia hạn bằng `POST /auth/admin/session/refresh`.\n- Thời điểm dùng RFC 3339 / ISO 8601 có offset. Giờ uống (`HH:MM`) là giờ địa phương Asia/Ho_Chi_Minh.\n- Lỗi có body `{\"detail\": ...}`. Với 403, 404, 429, 503 và lỗi quy tắc nghiệp vụ 422, `detail` là một chuỗi mã ổn định (snake_case) để client so khớp. Với lỗi sai cấu trúc request 422, `detail` là mảng lỗi theo từng field (định dạng mặc định của FastAPI). Với 401, `detail` là câu mô tả, client không so khớp nội dung.\n- Endpoint chạm dữ liệu sức khỏe kiểm quyền và consent ở mỗi request; truy cập bị từ chối trả 403 và được ghi vào nhật ký truy cập."
+    "description": "Hợp đồng API giữa Backend API và các client (Mobile App, Admin Web).\n\nQuy ước chung:\n- Xác thực bằng header `Authorization: Bearer <token>`, trong đó token là **app session token** do `/auth` cấp (`session.access_token`). Token do Supabase Auth cấp không được chấp nhận làm bearer (401). Phiên `mobile` sống 10 ngày, không có refresh: hết hạn thì đăng nhập lại. Phiên `admin_web` hết hạn sau 20 phút kể từ lần cấp gần nhất; gia hạn bằng `POST /auth/admin/session/refresh`.\n- Thời điểm dùng RFC 3339 / ISO 8601 có offset. Giờ uống (`HH:MM`) là giờ địa phương Asia/Ho_Chi_Minh.\n- Lỗi có body `{\"detail\": ...}`. Với 403, 404, 429, 503 và lỗi quy tắc nghiệp vụ 422, `detail` là một chuỗi mã ổn định (snake_case) để client so khớp. Với lỗi sai cấu trúc request 422, `detail` là mảng lỗi theo từng field (định dạng mặc định của FastAPI). Với 401, `detail` là câu mô tả, client không so khớp nội dung.\n- Endpoint chạm dữ liệu sức khỏe kiểm quyền và consent ở mỗi request; truy cập bị từ chối trả 403 và được ghi vào nhật ký truy cập.\n- Endpoint trả danh sách bọc trong object `{\"items\": [...]}` để sau này thêm phân trang hoặc metadata mà không phá vỡ client."
   },
   "tags": [
     {
@@ -13,6 +13,10 @@
     {
       "name": "medication",
       "description": "Thuốc của người bệnh và lịch uống."
+    },
+    {
+      "name": "catalog",
+      "description": "Danh mục thuốc dùng chung (tra cứu)."
     }
   ],
   "paths": {
@@ -482,13 +486,147 @@
       }
     },
     "/medications": {
+      "get": {
+        "tags": [
+          "medication"
+        ],
+        "operationId": "listUserMedications",
+        "summary": "Danh sách thuốc của chính người gọi",
+        "description": "Trả mọi thuốc **chưa xoá** của chính người gọi, cả đang dùng (`active`) và đã ngừng (`stopped`). Không nhận `patient_id`; người thân và admin xem từng thuốc qua `GET /medications/{id}`.\n\nMỗi phần tử cùng hình dạng với `GET /medications/{id}`: `schedules` chỉ gồm lịch đang mở. Không phân trang.\n\nPhân quyền: kiểm consent `health_data` ở mỗi request; thiếu consent trả 403 `consent_revoked`. Truy cập của chính chủ không ghi nhật ký truy cập.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Danh sách thuốc; `items` rỗng khi chưa có thuốc nào.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserMedicationList"
+                },
+                "examples": {
+                  "mixed": {
+                    "summary": "Hai thuốc đang dùng, một thuốc đã ngừng",
+                    "value": {
+                      "items": [
+                        {
+                          "id": 43,
+                          "medication": {
+                            "id": 2051,
+                            "name": "Ibuprofen 400mg",
+                            "active_ingredient": "Ibuprofen",
+                            "strength_text": "400 mg",
+                            "dosage_form": "Viên nén bao phim"
+                          },
+                          "dosing_mode": "as_needed",
+                          "quantity_per_dose": 1,
+                          "doses_per_day": 3,
+                          "intake_timing": "after_meal",
+                          "stock_quantity": null,
+                          "has_interaction_data": false,
+                          "status": "active",
+                          "ended_at": null,
+                          "schedules": []
+                        },
+                        {
+                          "id": 42,
+                          "medication": {
+                            "id": 1007,
+                            "name": "Amlodipin 5mg",
+                            "active_ingredient": "Amlodipin besilat",
+                            "strength_text": "5 mg",
+                            "dosage_form": "Viên nén"
+                          },
+                          "dosing_mode": "scheduled",
+                          "quantity_per_dose": 1,
+                          "doses_per_day": 2,
+                          "intake_timing": "after_meal",
+                          "stock_quantity": 30,
+                          "has_interaction_data": true,
+                          "status": "active",
+                          "ended_at": null,
+                          "schedules": [
+                            {
+                              "id": 301,
+                              "intake_time": "08:00",
+                              "days_of_week": [
+                                1,
+                                2,
+                                3,
+                                4,
+                                5,
+                                6,
+                                7
+                              ],
+                              "reminder_enabled": true,
+                              "effective_from": "2026-10-01T09:15:02+07:00"
+                            },
+                            {
+                              "id": 302,
+                              "intake_time": "20:00",
+                              "days_of_week": [
+                                1,
+                                2,
+                                3,
+                                4,
+                                5,
+                                6,
+                                7
+                              ],
+                              "reminder_enabled": true,
+                              "effective_from": "2026-10-01T09:15:02+07:00"
+                            }
+                          ]
+                        },
+                        {
+                          "id": 40,
+                          "medication": {
+                            "id": 3120,
+                            "name": "Smecta",
+                            "active_ingredient": "Diosmectit",
+                            "strength_text": "3 g",
+                            "dosage_form": "Thuốc bột pha hỗn dịch uống"
+                          },
+                          "dosing_mode": "scheduled",
+                          "quantity_per_dose": 1,
+                          "doses_per_day": 3,
+                          "intake_timing": "before_meal",
+                          "stock_quantity": 4,
+                          "has_interaction_data": false,
+                          "status": "stopped",
+                          "ended_at": "2026-09-28T19:00:00+07:00",
+                          "schedules": []
+                        }
+                      ]
+                    }
+                  },
+                  "empty": {
+                    "summary": "Chưa có thuốc",
+                    "value": {
+                      "items": []
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      },
       "post": {
         "tags": [
           "medication"
         ],
         "operationId": "createUserMedication",
         "summary": "Thêm một thuốc vào danh sách của chính người gọi",
-        "description": "Tạo thuốc cho **chính người gọi** (không nhận `patient_id`). Thuốc phải chọn từ danh mục (`medication_id`). Mọi bản ghi được tạo trong một transaction.\n\n- `dosing_mode = scheduled`: bắt buộc `intake_times`; mỗi giờ tạo một lịch (`effective_from` = thời điểm request). `doses_per_day` = số giờ.\n- `dosing_mode = as_needed`: bắt buộc `max_doses_per_day`; không tạo lịch, không có nhắc và không bao giờ bị đánh dấu bỏ lỡ. `doses_per_day` = `max_doses_per_day`.\n\n**Idempotent theo `client_uuid`**: client sinh một `client_uuid` cho mỗi lần người dùng bấm lưu và dùng lại đúng giá trị đó khi gửi lại (mất mạng, hết thời gian chờ). Lần tạo đầu trả 201. Gửi lại cùng `client_uuid` của cùng người dùng trả 200 kèm thuốc đã tạo lần đầu, không tạo bản ghi mới; body của lần gửi sau bị bỏ qua, kể cả khi khác lần đầu. Hai request trùng gửi song song chỉ tạo một thuốc. `client_uuid` chỉ có nghĩa trong phạm vi một người dùng.\n\nThêm một thuốc đang có trong danh sách với `client_uuid` mới vẫn được phép và tạo bản ghi mới.\n\nPhân quyền: chỉ người có consent `health_data` còn hiệu lực được ghi; thiếu consent trả 403 `consent_revoked`.",
+        "description": "Tạo thuốc cho **chính người gọi** (không nhận `patient_id`). Thuốc phải chọn từ danh mục (`medication_id`). Mọi bản ghi được tạo trong một transaction.\n\n- `dosing_mode = scheduled`: bắt buộc `intake_times`; mỗi giờ tạo một lịch (`effective_from` = thời điểm request). `doses_per_day` = số giờ.\n- `dosing_mode = as_needed`: bắt buộc `max_doses_per_day`; không tạo lịch, không có nhắc và không bao giờ bị đánh dấu bỏ lỡ. `doses_per_day` = `max_doses_per_day`.\n\n**Idempotent theo `client_uuid`**: client sinh một `client_uuid` cho mỗi lần người dùng bấm lưu và dùng lại đúng giá trị đó khi gửi lại (mất mạng, hết thời gian chờ). Lần tạo đầu trả 201. Gửi lại cùng `client_uuid` của cùng người dùng trả 200 kèm thuốc đã tạo lần đầu, không tạo bản ghi mới; body của lần gửi sau bị bỏ qua, kể cả khi khác lần đầu. Hai request trùng gửi song song chỉ tạo một thuốc. `client_uuid` chỉ có nghĩa trong phạm vi một người dùng.\n\nThêm một thuốc đang có trong danh sách với `client_uuid` mới vẫn được phép và tạo bản ghi mới.\n\nPhân quyền: chỉ người có consent `health_data` còn hiệu lực được ghi; thiếu consent trả 403 `consent_revoked`.\n\nGửi lại `client_uuid` của một thuốc **đã bị xoá** trả 404 `user_medication_not_found` và không tạo thuốc mới; client coi thao tác thêm đó đã kết thúc.",
         "security": [
           {
             "bearerAuth": []
@@ -555,6 +693,7 @@
                       "medication": {
                         "id": 1007,
                         "name": "Amlodipin 5mg",
+                        "active_ingredient": "Amlodipin besilat",
                         "strength_text": "5 mg",
                         "dosage_form": "Viên nén"
                       },
@@ -606,6 +745,7 @@
                       "medication": {
                         "id": 2051,
                         "name": "Ibuprofen 400mg",
+                        "active_ingredient": "Ibuprofen",
                         "strength_text": "400 mg",
                         "dosage_form": "Viên nén bao phim"
                       },
@@ -646,6 +786,7 @@
                       "medication": {
                         "id": 1007,
                         "name": "Amlodipin 5mg",
+                        "active_ingredient": "Amlodipin besilat",
                         "strength_text": "5 mg",
                         "dosage_form": "Viên nén"
                       },
@@ -701,6 +842,9 @@
           "403": {
             "$ref": "#/components/responses/Forbidden"
           },
+          "404": {
+            "$ref": "#/components/responses/UserMedicationNotFound"
+          },
           "422": {
             "$ref": "#/components/responses/UnprocessableEntity"
           }
@@ -727,7 +871,7 @@
         ],
         "operationId": "getUserMedication",
         "summary": "Xem một thuốc của người bệnh",
-        "description": "Người được phép: chính người bệnh (có consent `health_data`); người thân có liên kết `active`, đang bật chia sẻ và người bệnh có consent `health_data` và `family_sharing`; admin. Người thân và admin được ghi nhật ký truy cập `allowed`.\n\n`schedules` chỉ gồm các lịch đang mở (chưa kết thúc), sắp theo `intake_time`. Thuốc đã ngừng có `schedules` rỗng.",
+        "description": "Người được phép: chính người bệnh (có consent `health_data`); người thân có liên kết `active`, đang bật chia sẻ và người bệnh có consent `health_data` và `family_sharing`; admin. Người thân và admin được ghi nhật ký truy cập `allowed`.\n\n`schedules` chỉ gồm các lịch đang mở (chưa kết thúc), sắp theo `intake_time`. Thuốc đã ngừng có `schedules` rỗng.\n\nThuốc đã bị xoá trả 404 `user_medication_not_found`.",
         "security": [
           {
             "bearerAuth": []
@@ -748,6 +892,7 @@
                       "medication": {
                         "id": 1007,
                         "name": "Amlodipin 5mg",
+                        "active_ingredient": "Amlodipin besilat",
                         "strength_text": "5 mg",
                         "dosage_form": "Viên nén"
                       },
@@ -799,6 +944,7 @@
                       "medication": {
                         "id": 1007,
                         "name": "Amlodipin 5mg",
+                        "active_ingredient": "Amlodipin besilat",
                         "strength_text": "5 mg",
                         "dosage_form": "Viên nén"
                       },
@@ -810,6 +956,27 @@
                       "has_interaction_data": true,
                       "status": "stopped",
                       "ended_at": "2026-10-05T07:30:00+07:00",
+                      "schedules": []
+                    }
+                  },
+                  "as_needed": {
+                    "value": {
+                      "id": 43,
+                      "medication": {
+                        "id": 2051,
+                        "name": "Ibuprofen 400mg",
+                        "active_ingredient": "Ibuprofen",
+                        "strength_text": "400 mg",
+                        "dosage_form": "Viên nén bao phim"
+                      },
+                      "dosing_mode": "as_needed",
+                      "quantity_per_dose": 1,
+                      "doses_per_day": 3,
+                      "intake_timing": "after_meal",
+                      "stock_quantity": null,
+                      "has_interaction_data": false,
+                      "status": "active",
+                      "ended_at": null,
                       "schedules": []
                     }
                   }
@@ -833,8 +1000,8 @@
           "medication"
         ],
         "operationId": "updateUserMedication",
-        "summary": "Sửa hoặc ngừng một thuốc của chính người gọi",
-        "description": "Chỉ **chính người bệnh** được sửa. Người thân và admin, dù xem được thuốc, gọi endpoint này nhận 403 `khong_co_quyen` và được ghi nhật ký `denied`.\n\nGửi một hoặc nhiều field; field không gửi giữ nguyên. Quy tắc:\n\n| Muốn | Gửi | Kết quả |\n|---|---|---|\n| Đổi liều mỗi lần | `quantity_per_dose` | Lịch không đổi |\n| Đổi cách uống, tồn kho | `intake_timing`, `stock_quantity` (gửi `null` để xóa giá trị) | Lịch không đổi |\n| Đổi giờ hoặc số lần/ngày (thuốc đang `scheduled`) | `intake_times` | Đóng mọi lịch đang mở, tạo lịch mới cho từng giờ với `effective_from` = thời điểm request, giữ `days_of_week` của lịch cũ. `doses_per_day` = số giờ mới |\n| Đổi số lần tối đa (thuốc đang `as_needed`) | `max_doses_per_day` | `doses_per_day` = giá trị mới |\n| Chuyển sang dùng khi cần | `dosing_mode: as_needed` + `max_doses_per_day` | Đóng mọi lịch đang mở |\n| Chuyển sang uống theo giờ | `dosing_mode: scheduled` + `intake_times` | Tạo lịch mới, `days_of_week` = cả tuần |\n| Ngừng thuốc | chỉ `stopped: true` | Thuốc và mọi lịch đang mở kết thúc tại thời điểm request |\n\nLịch cũ chỉ bị đóng, không bị xóa. Đổi ngày uống trong tuần không thuộc endpoint này.\n\nTrả 422 `medication_rule_violation` khi: body rỗng; `intake_times` gửi cho thuốc sẽ là `as_needed` hoặc `max_doses_per_day` gửi cho thuốc sẽ là `scheduled`; đổi `dosing_mode` mà thiếu field bắt buộc của chế độ mới; `stopped` đi kèm field khác. Thuốc đã ngừng: gửi lại `stopped: true` trả 200 và không đổi gì; gửi field khác trả 422 `medication_stopped`.\n\nIdempotent theo nội dung: gửi lại cùng body cho cùng kết quả cuối, trừ `intake_times` (mỗi lần gửi tạo lại lịch với `effective_from` mới; vô hại với nhắc lịch nhưng client không nên tự gửi lại khi không cần).",
+        "summary": "Sửa, ngừng hoặc dùng lại một thuốc của chính người gọi",
+        "description": "Chỉ **chính người bệnh** được sửa. Người thân và admin, dù xem được thuốc, gọi endpoint này nhận 403 `khong_co_quyen` và được ghi nhật ký `denied`.\n\nGửi một hoặc nhiều field; field không gửi giữ nguyên. Quy tắc:\n\n| Muốn | Gửi | Kết quả |\n|---|---|---|\n| Đổi liều mỗi lần | `quantity_per_dose` | Lịch không đổi |\n| Đổi cách uống, tồn kho | `intake_timing`, `stock_quantity` (gửi `null` để xóa giá trị) | Lịch không đổi |\n| Đổi giờ hoặc số lần/ngày (thuốc đang `scheduled`) | `intake_times` | Đóng mọi lịch đang mở, tạo lịch mới cho từng giờ với `effective_from` = thời điểm request, giữ `days_of_week` của lịch cũ. `doses_per_day` = số giờ mới |\n| Đổi số lần tối đa (thuốc đang `as_needed`) | `max_doses_per_day` | `doses_per_day` = giá trị mới |\n| Chuyển sang dùng khi cần | `dosing_mode: as_needed` + `max_doses_per_day` | Đóng mọi lịch đang mở |\n| Chuyển sang uống theo giờ | `dosing_mode: scheduled` + `intake_times` | Tạo lịch mới, `days_of_week` = cả tuần |\n| Ngừng thuốc | chỉ `stopped: true` | Thuốc và mọi lịch đang mở kết thúc tại thời điểm request |\n| Dùng lại thuốc đã ngừng | chỉ `stopped: false` | `status` = `active`, `ended_at` = `null`. Thuốc `scheduled`: mở lại lịch mới với `effective_from` = thời điểm request, mỗi lịch lấy `intake_time`, `days_of_week`, `reminder_enabled` của một lịch đã đóng cùng lúc với lần ngừng gần nhất. Thuốc `as_needed`: không tạo lịch. Các field khác (liều, cách uống, tồn kho, `doses_per_day`) giữ nguyên |\n\nLịch cũ chỉ bị đóng, không bị xóa. Đổi ngày uống trong tuần không thuộc endpoint này.\n\nTrả 422 `medication_rule_violation` khi: body rỗng; `intake_times` gửi cho thuốc sẽ là `as_needed` hoặc `max_doses_per_day` gửi cho thuốc sẽ là `scheduled`; đổi `dosing_mode` mà thiếu field bắt buộc của chế độ mới; `stopped` đi kèm field khác. Thuốc đã ngừng: gửi lại `stopped: true` trả 200 và không đổi gì; gửi `stopped: false` để dùng lại; gửi field khác trả 422 `medication_stopped` (muốn sửa thì dùng lại trước). Thuốc đang dùng: gửi `stopped: false` trả 200 và không đổi gì. Thuốc `scheduled` đã ngừng mà không tìm được lịch nào đóng cùng lúc với lần ngừng (dữ liệu cũ) trả 422 `medication_rule_violation`; client hướng dẫn người dùng thêm thuốc mới.\n\nThuốc đã bị xoá trả 404 `user_medication_not_found`.\n\nIdempotent theo nội dung: gửi lại cùng body cho cùng kết quả cuối, trừ `intake_times` (mỗi lần gửi tạo lại lịch với `effective_from` mới; vô hại với nhắc lịch nhưng client không nên tự gửi lại khi không cần).",
         "security": [
           {
             "bearerAuth": []
@@ -882,6 +1049,12 @@
                   "value": {
                     "stopped": true
                   }
+                },
+                "reactivate": {
+                  "summary": "Dùng lại thuốc đã ngừng",
+                  "value": {
+                    "stopped": false
+                  }
                 }
               }
             }
@@ -902,6 +1075,7 @@
                       "medication": {
                         "id": 1007,
                         "name": "Amlodipin 5mg",
+                        "active_ingredient": "Amlodipin besilat",
                         "strength_text": "5 mg",
                         "dosage_form": "Viên nén"
                       },
@@ -953,6 +1127,7 @@
                       "medication": {
                         "id": 1007,
                         "name": "Amlodipin 5mg",
+                        "active_ingredient": "Amlodipin besilat",
                         "strength_text": "5 mg",
                         "dosage_form": "Viên nén"
                       },
@@ -965,6 +1140,59 @@
                       "status": "stopped",
                       "ended_at": "2026-10-05T07:30:00+07:00",
                       "schedules": []
+                    }
+                  },
+                  "reactivated": {
+                    "summary": "Sau khi dùng lại: lịch mới, cùng giờ với lịch trước khi ngừng",
+                    "value": {
+                      "id": 42,
+                      "medication": {
+                        "id": 1007,
+                        "name": "Amlodipin 5mg",
+                        "active_ingredient": "Amlodipin besilat",
+                        "strength_text": "5 mg",
+                        "dosage_form": "Viên nén"
+                      },
+                      "dosing_mode": "scheduled",
+                      "quantity_per_dose": 1,
+                      "doses_per_day": 2,
+                      "intake_timing": "after_meal",
+                      "stock_quantity": 30,
+                      "has_interaction_data": true,
+                      "status": "active",
+                      "ended_at": null,
+                      "schedules": [
+                        {
+                          "id": 377,
+                          "intake_time": "08:00",
+                          "days_of_week": [
+                            1,
+                            2,
+                            3,
+                            4,
+                            5,
+                            6,
+                            7
+                          ],
+                          "reminder_enabled": true,
+                          "effective_from": "2026-10-08T10:02:41+07:00"
+                        },
+                        {
+                          "id": 378,
+                          "intake_time": "20:00",
+                          "days_of_week": [
+                            1,
+                            2,
+                            3,
+                            4,
+                            5,
+                            6,
+                            7
+                          ],
+                          "reminder_enabled": true,
+                          "effective_from": "2026-10-08T10:02:41+07:00"
+                        }
+                      ]
                     }
                   }
                 }
@@ -982,6 +1210,183 @@
           },
           "422": {
             "$ref": "#/components/responses/UnprocessableEntity"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "medication"
+        ],
+        "operationId": "deleteUserMedication",
+        "summary": "Xoá một thuốc của chính người gọi",
+        "description": "Chỉ **chính người bệnh** được xoá. Người thân và admin nhận 403 `khong_co_quyen` và được ghi nhật ký `denied`; người bệnh không còn consent `health_data` nhận 403 `consent_revoked`.\n\nTrong một transaction: mọi lịch đang mở kết thúc tại thời điểm request; thuốc đang dùng được ngừng (`ended_at` = thời điểm request, thuốc đã ngừng giữ `ended_at` cũ); thuốc được đánh dấu đã xoá. Lịch sử liều đã ghi (`dose_logs`) và dữ liệu phân tích tương tác **giữ nguyên**, nhưng thuốc không còn xuất hiện ở bất kỳ endpoint nào của người bệnh: `GET /medications` bỏ qua; `GET`, `PATCH`, `DELETE /medications/{id}` trả 404. Không có thao tác khôi phục; muốn dùng lại thì thêm thuốc mới.\n\nSau khi xoá, không còn lượt uống nào được sinh hay đánh dấu bỏ lỡ cho thuốc này.\n\nGửi lại: lần xoá thứ hai trả 404. Client gửi lại sau lỗi mạng mà nhận 404 thì coi như đã xoá.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Đã xoá. Không có body."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/UserMedicationNotFound"
+          }
+        }
+      }
+    },
+    "/catalog/medications": {
+      "get": {
+        "tags": [
+          "catalog"
+        ],
+        "operationId": "searchCatalogMedications",
+        "summary": "Tìm thuốc trong danh mục",
+        "description": "Dùng khi người dùng chọn thuốc để thêm (`UserMedicationCreate.medication_id` = `id` trả về).\n\nSo khớp: bỏ khoảng trắng hai đầu của `q`; `q` là chuỗi con của `name` hoặc `active_ingredient` sau khi **cả hai phía** được chuẩn hóa: bỏ dấu tiếng Việt (kể cả `đ` → `d`) và không phân biệt hoa thường. Ví dụ `thuoc ho`, `THUỐC HO`, `thuốc ho` đều khớp `Thuốc ho Bảo Thanh`; `amlodipin` khớp `Amlodipin`. Khoảng trắng bên trong `q` được giữ nguyên (`thuoc  ho` với hai dấu cách không khớp `Thuốc ho`). Bỏ qua thuốc đã bị gỡ khỏi danh mục.\n\nThứ tự: thuốc có `name` (đã chuẩn hóa) bắt đầu bằng `q` (đã chuẩn hóa) đứng trước, sau đó theo `name` tăng dần, rồi `id` tăng dần. Trả tối đa `limit` thuốc, không phân trang.\n\nPhân quyền: mọi phiên hợp lệ (mobile hoặc admin_web). Danh mục không phải dữ liệu sức khỏe, không kiểm consent và không ghi nhật ký truy cập.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "description": "Chuỗi tìm; phải có ít nhất một ký tự không phải khoảng trắng.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "pattern": "\\S"
+            },
+            "example": "amlo"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Số kết quả tối đa.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Kết quả tìm; `items` rỗng khi không có thuốc nào khớp.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogMedicationList"
+                },
+                "examples": {
+                  "found": {
+                    "summary": "q=amlo",
+                    "value": {
+                      "items": [
+                        {
+                          "id": 1007,
+                          "name": "Amlodipin 5mg",
+                          "active_ingredient": "Amlodipin besilat",
+                          "strength_text": "5 mg",
+                          "dosage_form": "Viên nén"
+                        },
+                        {
+                          "id": 1008,
+                          "name": "Amlodipin 10mg",
+                          "active_ingredient": "Amlodipin besilat",
+                          "strength_text": "10 mg",
+                          "dosage_form": "Viên nén"
+                        },
+                        {
+                          "id": 1544,
+                          "name": "Exforge 5mg/80mg",
+                          "active_ingredient": "Amlodipin; Valsartan",
+                          "strength_text": "5 mg; 80 mg",
+                          "dosage_form": "Viên nén bao phim"
+                        }
+                      ]
+                    }
+                  },
+                  "unaccented": {
+                    "summary": "q=thuoc ho (gõ không dấu)",
+                    "value": {
+                      "items": [
+                        {
+                          "id": 5003,
+                          "name": "Thuốc ho Bảo Thanh",
+                          "active_ingredient": null,
+                          "strength_text": null,
+                          "dosage_form": "Siro"
+                        },
+                        {
+                          "id": 5120,
+                          "name": "Thuốc ho người lớn OPC",
+                          "active_ingredient": "Bạch bộ; Cát cánh; Mạch môn",
+                          "strength_text": null,
+                          "dosage_form": "Siro"
+                        }
+                      ]
+                    }
+                  },
+                  "no_ingredient": {
+                    "summary": "Thuốc danh mục chưa có hoạt chất",
+                    "value": {
+                      "items": [
+                        {
+                          "id": 5003,
+                          "name": "Thuốc ho Bảo Thanh",
+                          "active_ingredient": null,
+                          "strength_text": null,
+                          "dosage_form": "Siro"
+                        }
+                      ]
+                    }
+                  },
+                  "empty": {
+                    "summary": "Không có kết quả",
+                    "value": {
+                      "items": []
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "422": {
+            "description": "`q` thiếu, rỗng, toàn khoảng trắng hoặc dài quá 100 ký tự; `limit` ngoài 1–50.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                "example": {
+                  "detail": [
+                    {
+                      "loc": [
+                        "query",
+                        "q"
+                      ],
+                      "msg": "String should match pattern '\\S'",
+                      "type": "string_pattern_mismatch"
+                    }
+                  ]
+                }
+              }
+            }
           }
         }
       }
@@ -1149,8 +1554,7 @@
           },
           "stopped": {
             "type": "boolean",
-            "const": true,
-            "description": "Chỉ nhận `true`, và phải gửi một mình. Không có thao tác bỏ ngừng; muốn dùng lại thì thêm thuốc mới."
+            "description": "Phải gửi một mình. `true`: ngừng thuốc. `false`: dùng lại thuốc đã ngừng. Xem bảng quy tắc ở mô tả `PATCH /medications/{id}`."
           }
         }
       },
@@ -1159,6 +1563,7 @@
         "required": [
           "id",
           "name",
+          "active_ingredient",
           "strength_text",
           "dosage_form"
         ],
@@ -1171,6 +1576,13 @@
           "name": {
             "type": "string"
           },
+          "active_ingredient": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Hoạt chất ghi trong danh mục, văn bản thô theo nguồn (có thể gồm nhiều hoạt chất). `null` khi nguồn không có. Chỉ để hiển thị; không dùng để kiểm tra tương tác."
+          },
           "strength_text": {
             "type": [
               "string",
@@ -1181,7 +1593,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Dạng bào chế theo nguồn, ví dụ `Viên nén`, `Thuốc bột pha hỗn dịch uống`, `Dung dịch uống`. Client tự suy ra đơn vị liều hiển thị từ trường này."
           }
         }
       },
@@ -1581,6 +1994,38 @@
             "$ref": "#/components/schemas/AppSession"
           }
         }
+      },
+      "CatalogMedicationList": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "$ref": "#/components/schemas/CatalogMedicationSummary"
+            }
+          }
+        }
+      },
+      "UserMedicationList": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserMedication"
+            },
+            "description": "Thuốc chưa xoá của người gọi, cả đang dùng và đã ngừng, sắp theo `id` giảm dần (thuốc thêm sau đứng trước)."
+          }
+        }
       }
     },
     "responses": {
@@ -1620,7 +2065,7 @@
         }
       },
       "UserMedicationNotFound": {
-        "description": "Không có thuốc nào với id này.",
+        "description": "Không có thuốc nào với id này, hoặc thuốc đã bị xoá (`DELETE /medications/{id}`).",
         "content": {
           "application/json": {
             "schema": {
