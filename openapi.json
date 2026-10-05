@@ -1401,8 +1401,8 @@
           "consent"
         ],
         "operationId": "listMyConsents",
-        "summary": "Trạng thái consent của chính người gọi cho từng mục đích",
-        "description": "Trả trạng thái hiện tại của **chính người gọi** cho cả ba mục đích, kể cả mục đích chưa từng đồng ý. Không nhận `user_id` hay `patient_id`; không thể xem consent của người khác.\n\nMobile gọi sau khi hoàn tất hồ sơ và mỗi lần khởi động có phiên để biết có cần hiện màn đồng ý hay không. Trạng thái này chỉ dùng để hiển thị; quyền truy cập dữ liệu luôn do server kiểm lại ở mỗi request.\n\nPhân quyền: mọi phiên hợp lệ (`mobile` hoặc `admin_web`). Consent không phải dữ liệu sức khỏe và chỉ là của chính người gọi, nên không ghi nhật ký truy cập.",
+        "summary": "Trạng thái consent và đồng ý điều khoản của chính người gọi",
+        "description": "Trả trạng thái hiện tại của **chính người gọi** cho cả bốn giá trị của `ConsentPurpose`, kể cả giá trị chưa từng đồng ý. Không nhận `user_id` hay `patient_id`; không thể xem consent của người khác.\n\nMobile gọi mỗi lần vào app có phiên để biết có cần hiện màn đồng ý hay không:\n- `terms` là `not_granted`, hoặc `document_version` ≠ `current_document_version`: hiện màn đồng ý điều khoản (người dùng có từ trước, hoặc điều khoản vừa đổi phiên bản);\n- `health_data` là `not_granted`: hiện màn đồng ý mục đích.\n\nTrạng thái này chỉ dùng để hiển thị; quyền truy cập dữ liệu luôn do server kiểm lại ở mỗi request.\n\nPhân quyền: mọi phiên hợp lệ (`mobile` hoặc `admin_web`). Consent không phải dữ liệu sức khỏe và chỉ là của chính người gọi, nên không ghi nhật ký truy cập.",
         "security": [
           {
             "bearerAuth": []
@@ -1418,7 +1418,7 @@
                 },
                 "examples": {
                   "new_user": {
-                    "summary": "Người dùng mới, chưa đồng ý mục đích nào",
+                    "summary": "Người dùng mới, chưa đồng ý gì",
                     "value": {
                       "items": [
                         {
@@ -1441,12 +1441,19 @@
                           "granted_at": null,
                           "document_version": null,
                           "current_document_version": "2026-10-v1"
+                        },
+                        {
+                          "purpose": "terms",
+                          "status": "not_granted",
+                          "granted_at": null,
+                          "document_version": null,
+                          "current_document_version": "2026-10-v1"
                         }
                       ]
                     }
                   },
                   "health_only": {
-                    "summary": "Đã đồng ý health_data, chưa đồng ý hai mục còn lại",
+                    "summary": "Đã đồng ý điều khoản và health_data, chưa đồng ý hai mục còn lại",
                     "value": {
                       "items": [
                         {
@@ -1469,6 +1476,48 @@
                           "granted_at": null,
                           "document_version": null,
                           "current_document_version": "2026-10-v1"
+                        },
+                        {
+                          "purpose": "terms",
+                          "status": "granted",
+                          "granted_at": "2026-10-03T17:19:40+07:00",
+                          "document_version": "2026-10-v1",
+                          "current_document_version": "2026-10-v1"
+                        }
+                      ]
+                    }
+                  },
+                  "terms_outdated": {
+                    "summary": "Điều khoản đã đổi phiên bản: client phải hỏi đồng ý lại (ví dụ giả định phiên bản 2026-12-v2)",
+                    "value": {
+                      "items": [
+                        {
+                          "purpose": "health_data",
+                          "status": "granted",
+                          "granted_at": "2026-10-03T17:20:05+07:00",
+                          "document_version": "2026-10-v1",
+                          "current_document_version": "2026-10-v1"
+                        },
+                        {
+                          "purpose": "family_sharing",
+                          "status": "not_granted",
+                          "granted_at": null,
+                          "document_version": null,
+                          "current_document_version": "2026-10-v1"
+                        },
+                        {
+                          "purpose": "ai_meal",
+                          "status": "not_granted",
+                          "granted_at": null,
+                          "document_version": null,
+                          "current_document_version": "2026-10-v1"
+                        },
+                        {
+                          "purpose": "terms",
+                          "status": "granted",
+                          "granted_at": "2026-10-03T17:19:40+07:00",
+                          "document_version": "2026-10-v1",
+                          "current_document_version": "2026-12-v2"
                         }
                       ]
                     }
@@ -1487,8 +1536,8 @@
           "consent"
         ],
         "operationId": "grantConsent",
-        "summary": "Đồng ý một mục đích xử lý dữ liệu",
-        "description": "Ghi consent của **chính người gọi** cho **một** mục đích. Không có cách đồng ý nhiều mục đích trong một request; mỗi công tắc trên giao diện là một request riêng.\n\n`document_version` phải bằng `current_document_version` của mục đích đó (lấy từ `GET /consents`); khác thì trả 422 `consent_document_outdated`.\n\n**Gửi lại an toàn**: mục đích đã có consent còn hiệu lực thì trả 200 kèm consent hiện có, không ghi gì mới, `granted_at` giữ nguyên. Hai request đồng ý cùng mục đích gửi song song chỉ tạo một consent; request còn lại nhận 200. Không cần khóa chống trùng từ client.\n\nSau khi đồng ý thành công, request kế tiếp tới endpoint cần mục đích đó được phép ngay; server không cache trạng thái consent.\n\nĐồng ý lại sau khi đã rút tạo một consent mới (lịch sử consent cũ được giữ).\n\nPhân quyền: mọi phiên hợp lệ; chỉ ghi cho chính người gọi.",
+        "summary": "Đồng ý một mục đích xử lý dữ liệu, hoặc đồng ý điều khoản",
+        "description": "Ghi consent của **chính người gọi** cho **một** giá trị của `ConsentPurpose`. Không có cách đồng ý nhiều giá trị trong một request; mỗi công tắc hay ô đồng ý trên giao diện là một request riêng.\n\n`document_version` phải bằng `current_document_version` của giá trị đó (lấy từ `GET /consents`); khác thì trả 422 `consent_document_outdated`.\n\n**Gửi lại an toàn**: đã có consent còn hiệu lực **cùng phiên bản** thì trả 200 kèm consent hiện có, không ghi gì mới, `granted_at` giữ nguyên. Hai request đồng ý cùng giá trị gửi song song chỉ tạo một consent; request còn lại nhận 200. Không cần khóa chống trùng từ client.\n\n**Consent ở phiên bản cũ**:\n- `terms`: consent cũ bị đánh dấu đã rút (giữ làm lịch sử) và một consent mới ở phiên bản hiện hành được ghi trong **cùng một transaction**; trả 201. Hai request như vậy gửi song song vẫn chỉ để lại một consent hiệu lực ở phiên bản mới; request còn lại nhận 200.\n- `health_data`, `family_sharing`, `ai_meal`: giữ hành vi hiện có, trả 200 kèm consent cũ (đồng ý lại theo phiên bản cho ba mục đích này chưa được hỗ trợ).\n\nSau khi đồng ý thành công, request kế tiếp tới endpoint cần mục đích đó được phép ngay; server không cache trạng thái consent.\n\nĐồng ý lại sau khi đã rút tạo một consent mới (lịch sử consent cũ được giữ).\n\nMobile gửi `terms` ngay sau khi xác thực OTP thành công nếu người dùng đã tick ô đồng ý ở màn đăng nhập, hoặc khi người dùng đồng ý ở màn \"Điều khoản đã cập nhật\".\n\nPhân quyền: mọi phiên hợp lệ; chỉ ghi cho chính người gọi.",
         "security": [
           {
             "bearerAuth": []
@@ -1515,6 +1564,13 @@
                     "purpose": "ai_meal",
                     "document_version": "2026-10-v1"
                   }
+                },
+                "terms": {
+                  "summary": "Đồng ý điều khoản ngay sau khi xác thực OTP",
+                  "value": {
+                    "purpose": "terms",
+                    "document_version": "2026-10-v1"
+                  }
                 }
               }
             }
@@ -1522,7 +1578,7 @@
         },
         "responses": {
           "201": {
-            "description": "Đã ghi consent mới. Body là trạng thái của mục đích vừa đồng ý.",
+            "description": "Đã ghi consent mới (lần đầu, đồng ý lại sau khi rút, hoặc thay consent `terms` ở phiên bản cũ). Body là trạng thái của giá trị vừa đồng ý.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1537,13 +1593,23 @@
                       "document_version": "2026-10-v1",
                       "current_document_version": "2026-10-v1"
                     }
+                  },
+                  "terms_replaced": {
+                    "summary": "Thay consent terms ở phiên bản cũ (giả định phiên bản hiện hành 2026-12-v2)",
+                    "value": {
+                      "purpose": "terms",
+                      "status": "granted",
+                      "granted_at": "2026-12-15T09:30:00+07:00",
+                      "document_version": "2026-12-v2",
+                      "current_document_version": "2026-12-v2"
+                    }
                   }
                 }
               }
             }
           },
           "200": {
-            "description": "Mục đích đã có consent còn hiệu lực: không ghi gì mới. Body là consent hiện có (`granted_at`, `document_version` là của lần đồng ý trước).",
+            "description": "Đã có consent còn hiệu lực: không ghi gì mới. Body là consent hiện có (`granted_at`, `document_version` là của lần đồng ý trước). Với `terms`, chỉ xảy ra khi consent hiện có cùng phiên bản với request.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1590,7 +1656,7 @@
                             "body",
                             "purpose"
                           ],
-                          "msg": "Input should be 'health_data', 'family_sharing' or 'ai_meal'",
+                          "msg": "Input should be 'health_data', 'family_sharing', 'ai_meal' or 'terms'",
                           "type": "enum"
                         }
                       ]
@@ -1618,7 +1684,7 @@
           "schema": {
             "$ref": "#/components/schemas/ConsentPurpose"
           },
-          "description": "Mục đích cần rút. Giá trị ngoài danh sách trả 422 `ValidationError`."
+          "description": "Mục đích cần rút. Giá trị ngoài danh sách trả 422 `ValidationError`; `terms` trả 422 `consent_not_withdrawable`."
         }
       ],
       "post": {
@@ -1627,7 +1693,7 @@
         ],
         "operationId": "withdrawConsent",
         "summary": "Rút consent một mục đích",
-        "description": "Rút consent của **chính người gọi** cho đúng một mục đích. Mục đích khác không bị ảnh hưởng. Consent bị đánh dấu đã rút kèm thời điểm, không bị xóa (giữ làm bằng chứng). Không xóa dữ liệu đã có; xóa dữ liệu là yêu cầu riêng.\n\nCó hiệu lực ngay ở request kế tiếp:\n- rút `health_data`: mọi endpoint dữ liệu sức khỏe của chính chủ trả 403 `consent_revoked`; người thân cũng mất quyền xem và không nhận cảnh báo bỏ liều;\n- rút `family_sharing`: người thân mất quyền xem (403, có ghi nhật ký `denied`) và không nhận cảnh báo; người bệnh vẫn tự dùng bình thường;\n- rút `ai_meal`: không còn tạo gợi ý bữa ăn bằng AI.\n\n**Idempotent**: rút khi mục đích đó không có consent còn hiệu lực (chưa từng đồng ý hoặc đã rút) vẫn trả 200 và không ghi gì.\n\nKhông có body request. Phân quyền: mọi phiên hợp lệ; chỉ rút cho chính người gọi.",
+        "description": "Rút consent của **chính người gọi** cho đúng một mục đích. Mục đích khác không bị ảnh hưởng. Consent bị đánh dấu đã rút kèm thời điểm, không bị xóa (giữ làm bằng chứng). Không xóa dữ liệu đã có; xóa dữ liệu là yêu cầu riêng.\n\nCó hiệu lực ngay ở request kế tiếp:\n- rút `health_data`: mọi endpoint dữ liệu sức khỏe của chính chủ trả 403 `consent_revoked`; người thân cũng mất quyền xem và không nhận cảnh báo bỏ liều;\n- rút `family_sharing`: người thân mất quyền xem (403, có ghi nhật ký `denied`) và không nhận cảnh báo; người bệnh vẫn tự dùng bình thường;\n- rút `ai_meal`: không còn tạo gợi ý bữa ăn bằng AI.\n\n`terms` **không** rút được: trả 422 `consent_not_withdrawable`, không ghi gì. Người dùng muốn ngừng dùng dịch vụ thì gửi yêu cầu xóa dữ liệu.\n\n**Idempotent**: rút khi mục đích đó không có consent còn hiệu lực (chưa từng đồng ý hoặc đã rút) vẫn trả 200 và không ghi gì.\n\nKhông có body request. Phân quyền: mọi phiên hợp lệ; chỉ rút cho chính người gọi.",
         "security": [
           {
             "bearerAuth": []
@@ -1659,23 +1725,41 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "422": {
-            "description": "`purpose` trong đường dẫn không thuộc danh sách; không có gì được ghi.",
+            "description": "Không có gì được ghi.\n\n- `purpose` trong đường dẫn không thuộc danh sách: `ValidationError`.\n- `consent_not_withdrawable`: `purpose` là `terms`.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ValidationError"
-                },
-                "example": {
-                  "detail": [
+                  "oneOf": [
                     {
-                      "loc": [
-                        "path",
-                        "purpose"
-                      ],
-                      "msg": "Input should be 'health_data', 'family_sharing' or 'ai_meal'",
-                      "type": "enum"
+                      "$ref": "#/components/schemas/ValidationError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
                     }
                   ]
+                },
+                "examples": {
+                  "field": {
+                    "summary": "Mục đích không hợp lệ",
+                    "value": {
+                      "detail": [
+                        {
+                          "loc": [
+                            "path",
+                            "purpose"
+                          ],
+                          "msg": "Input should be 'health_data', 'family_sharing', 'ai_meal' or 'terms'",
+                          "type": "enum"
+                        }
+                      ]
+                    }
+                  },
+                  "not_withdrawable": {
+                    "summary": "Không rút được đồng ý điều khoản",
+                    "value": {
+                      "detail": "consent_not_withdrawable"
+                    }
+                  }
                 }
               }
             }
@@ -2324,9 +2408,10 @@
         "enum": [
           "health_data",
           "family_sharing",
-          "ai_meal"
+          "ai_meal",
+          "terms"
         ],
-        "description": "Mục đích xử lý dữ liệu. Mỗi mục đích được đồng ý và rút riêng; đồng ý mục đích này không được coi là đồng ý mục đích khác.\n\n- `health_data`: lưu và xử lý dữ liệu sức khỏe của chính người dùng (thuốc, lịch uống, lịch sử uống thuốc, cảnh báo tương tác, hồ sơ sức khỏe). Thiếu consent này, mọi endpoint dữ liệu sức khỏe trả 403 `consent_revoked` cho chính chủ.\n- `family_sharing`: cho người thân có liên kết đang bật chia sẻ xem dữ liệu và nhận cảnh báo bỏ liều. Người thân chỉ được truy cập khi người bệnh có **cả** `family_sharing` và `health_data`.\n- `ai_meal`: dùng dữ liệu để tạo gợi ý bữa ăn bằng AI."
+        "description": "Mục đích xử lý dữ liệu, hoặc sự đồng ý điều khoản. Mỗi giá trị được đồng ý riêng; đồng ý giá trị này không được coi là đồng ý giá trị khác.\n\n- `health_data`: lưu và xử lý dữ liệu sức khỏe của chính người dùng (thuốc, lịch uống, lịch sử uống thuốc, cảnh báo tương tác, hồ sơ sức khỏe). Thiếu consent này, mọi endpoint dữ liệu sức khỏe trả 403 `consent_revoked` cho chính chủ.\n- `family_sharing`: cho người thân có liên kết đang bật chia sẻ xem dữ liệu và nhận cảnh báo bỏ liều. Người thân chỉ được truy cập khi người bệnh có **cả** `family_sharing` và `health_data`.\n- `ai_meal`: dùng dữ liệu để tạo gợi ý bữa ăn bằng AI.\n- `terms`: người dùng đã đồng ý **Điều khoản dịch vụ và Chính sách quyền riêng tư** (một giá trị, một phiên bản chung cho cả hai văn bản). Đây là bằng chứng đồng ý, **không** tham gia quyết định truy cập: không endpoint nào trả 403 vì thiếu `terms`. Không rút được (`POST /consents/terms/withdraw` trả 422 `consent_not_withdrawable`). Khác ba mục đích kia, đồng ý `terms` ở phiên bản mới **thay thế** consent ở phiên bản cũ (xem `POST /consents`).\n\nClient phải bỏ qua giá trị chưa biết trong response thay vì báo lỗi, để server thêm giá trị mới sau này không làm vỡ bản app đã cài."
       },
       "ConsentStatus": {
         "type": "string",
@@ -2375,7 +2460,7 @@
               "string",
               "null"
             ],
-            "description": "Phiên bản văn bản người dùng đã đồng ý ở consent đang hiệu lực. `null` khi `not_granted`."
+            "description": "Phiên bản văn bản người dùng đã đồng ý ở consent đang hiệu lực. `null` khi `not_granted`. Với `terms`, giá trị này khác `current_document_version` nghĩa là điều khoản đã đổi và client phải hỏi người dùng đồng ý lại."
           },
           "current_document_version": {
             "type": "string",
@@ -2392,12 +2477,12 @@
         "properties": {
           "items": {
             "type": "array",
-            "minItems": 3,
-            "maxItems": 3,
+            "minItems": 4,
+            "maxItems": 4,
             "items": {
               "$ref": "#/components/schemas/Consent"
             },
-            "description": "Luôn có đúng một phần tử cho mỗi mục đích, theo thứ tự `health_data`, `family_sharing`, `ai_meal`, kể cả mục đích chưa từng đồng ý."
+            "description": "Luôn có đúng một phần tử cho mỗi giá trị của `ConsentPurpose`, theo thứ tự `health_data`, `family_sharing`, `ai_meal`, `terms`, kể cả giá trị chưa từng đồng ý."
           }
         }
       },
