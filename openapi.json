@@ -3,7 +3,7 @@
   "info": {
     "title": "DrugTime API",
     "version": "0.1.0",
-    "description": "Hợp đồng API giữa Backend API và các client (Mobile App, Admin Web).\n\nQuy ước chung:\n- Xác thực bằng header `Authorization: Bearer <token>`, trong đó token là **app session token** do `/auth` cấp (`session.access_token`). Token do Supabase Auth cấp không được chấp nhận làm bearer (401). Phiên `mobile` sống 10 ngày, không có refresh: hết hạn thì đăng nhập lại. Phiên `admin_web` hết hạn sau 20 phút kể từ lần cấp gần nhất; gia hạn bằng `POST /auth/admin/session/refresh`.\n- Thời điểm dùng RFC 3339 / ISO 8601 có offset. Giờ uống (`HH:MM`) là giờ địa phương Asia/Ho_Chi_Minh.\n- Lỗi có body `{\"detail\": ...}`. Với 403, 404, 429, 503 và lỗi quy tắc nghiệp vụ 422, `detail` là một chuỗi mã ổn định (snake_case) để client so khớp. Với lỗi sai cấu trúc request 422, `detail` là mảng lỗi theo từng field (định dạng mặc định của FastAPI). Với 401, `detail` là câu mô tả, client không so khớp nội dung.\n- Endpoint chạm dữ liệu sức khỏe kiểm quyền và consent ở mỗi request; truy cập bị từ chối trả 403 và được ghi vào nhật ký truy cập.\n- Endpoint trả danh sách bọc trong object `{\"items\": [...]}` để sau này thêm phân trang hoặc metadata mà không phá vỡ client."
+    "description": "Hợp đồng API giữa Backend API và các client (Mobile App, Admin Web).\n\nQuy ước chung:\n- Xác thực bằng header `Authorization: Bearer <token>`, trong đó token là **app session token** do `/auth` cấp (`session.access_token`). Token do Supabase Auth cấp không được chấp nhận làm bearer (401). Phiên `mobile` sống 10 ngày, không có refresh: hết hạn thì đăng nhập lại. Phiên `admin_web` hết hạn sau 20 phút kể từ lần cấp gần nhất; gia hạn bằng `POST /auth/admin/session/refresh`.\n- Thời điểm dùng RFC 3339 / ISO 8601 có offset. Giờ uống (`HH:MM`) là giờ địa phương Asia/Ho_Chi_Minh.\n- Lỗi có body `{\"detail\": ...}`. Với 403, 404, 429, 503 và lỗi quy tắc nghiệp vụ 422, `detail` là một chuỗi mã ổn định (snake_case) để client so khớp. Với lỗi sai cấu trúc request 422, `detail` là mảng lỗi theo từng field (định dạng mặc định của FastAPI). Với 401, `detail` là câu mô tả, client không so khớp nội dung.\n- Endpoint chạm dữ liệu sức khỏe kiểm quyền và consent ở mỗi request; truy cập bị từ chối trả 403 và được ghi vào nhật ký truy cập.\n- Endpoint trả danh sách bọc trong object `{\"items\": [...]}` để sau này thêm phân trang hoặc metadata mà không phá vỡ client.\n- Endpoint có phân trang dùng **con trỏ**: query `limit` (số phần tử tối đa của trang) và `cursor` (bỏ trống ở trang đầu); response có `next_cursor`, là `null` ở trang cuối. Muốn tải trang kế thì gửi lại đúng `next_cursor` nhận được. Con trỏ là chuỗi mờ: client không đọc, không tự tạo hay sửa. Con trỏ hỏng hoặc không thuộc endpoint/tham số này trả 422 `invalid_cursor`. Phần tử đã trả ở trang trước không lặp lại ở trang sau.\n- Giai đoạn 1 admin **không** đọc hay ghi dữ liệu sức khỏe của người bệnh (QD-32): mọi endpoint dữ liệu sức khỏe trả 403 `khong_co_quyen` cho admin và ghi nhật ký `denied`."
   },
   "tags": [
     {
@@ -496,7 +496,7 @@
         ],
         "operationId": "listUserMedications",
         "summary": "Danh sách thuốc của chính người gọi",
-        "description": "Trả mọi thuốc **chưa xoá** của chính người gọi, cả đang dùng (`active`) và đã ngừng (`stopped`). Không nhận `patient_id`; người thân và admin xem từng thuốc qua `GET /medications/{id}`.\n\nMỗi phần tử cùng hình dạng với `GET /medications/{id}`: `schedules` chỉ gồm lịch đang mở. Không phân trang.\n\nPhân quyền: kiểm consent `health_data` ở mỗi request; thiếu consent trả 403 `consent_revoked`. Truy cập của chính chủ không ghi nhật ký truy cập.",
+        "description": "Trả mọi thuốc **chưa xoá** của chính người gọi, cả đang dùng (`active`) và đã ngừng (`stopped`). Không nhận `patient_id`; người thân xem từng thuốc qua `GET /medications/{id}` hoặc lịch qua `GET /patients/{patient_id}/schedules`.\n\nMỗi phần tử cùng hình dạng với `GET /medications/{id}`: `schedules` chỉ gồm lịch đang mở. Không phân trang.\n\nPhân quyền: kiểm consent `health_data` ở mỗi request; thiếu consent trả 403 `consent_revoked`. Truy cập của chính chủ không ghi nhật ký truy cập.",
         "security": [
           {
             "bearerAuth": []
@@ -875,7 +875,7 @@
         ],
         "operationId": "getUserMedication",
         "summary": "Xem một thuốc của người bệnh",
-        "description": "Người được phép: chính người bệnh (có consent `health_data`); người thân có liên kết `active`, đang bật chia sẻ và người bệnh có consent `health_data` và `family_sharing`; admin. Người thân và admin được ghi nhật ký truy cập `allowed`.\n\n`schedules` chỉ gồm các lịch đang mở (chưa kết thúc), sắp theo `intake_time`. Thuốc đã ngừng có `schedules` rỗng.\n\nThuốc đã bị xoá trả 404 `user_medication_not_found`.",
+        "description": "Người được phép: chính người bệnh (có consent `health_data`); người thân có liên kết `active`, đang bật chia sẻ và người bệnh có consent `health_data` và `family_sharing`. Người thân được ghi nhật ký truy cập `allowed`. Admin nhận 403 `khong_co_quyen` và được ghi nhật ký `denied` (QD-32).\n\n`schedules` chỉ gồm các lịch đang mở (`ended_at` rỗng), sắp theo `intake_time`; lịch đang mở có thể có `effective_from` trong tương lai (xem \"Mốc hiệu lực\" ở `POST /medications/{id}/schedules`). Thuốc đã ngừng có `schedules` rỗng.\n\nThuốc đã bị xoá trả 404 `user_medication_not_found`.",
         "security": [
           {
             "bearerAuth": []
@@ -1005,7 +1005,7 @@
         ],
         "operationId": "updateUserMedication",
         "summary": "Sửa, ngừng hoặc dùng lại một thuốc của chính người gọi",
-        "description": "Chỉ **chính người bệnh** được sửa. Người thân và admin, dù xem được thuốc, gọi endpoint này nhận 403 `khong_co_quyen` và được ghi nhật ký `denied`.\n\nGửi một hoặc nhiều field; field không gửi giữ nguyên. Quy tắc:\n\n| Muốn | Gửi | Kết quả |\n|---|---|---|\n| Đổi liều mỗi lần | `quantity_per_dose` | Lịch không đổi |\n| Đổi cách uống, tồn kho | `intake_timing`, `stock_quantity` (gửi `null` để xóa giá trị) | Lịch không đổi |\n| Đổi giờ hoặc số lần/ngày (thuốc đang `scheduled`) | `intake_times` | Đóng mọi lịch đang mở, tạo lịch mới cho từng giờ với `effective_from` = thời điểm request, giữ `days_of_week` của lịch cũ. `doses_per_day` = số giờ mới |\n| Đổi số lần tối đa (thuốc đang `as_needed`) | `max_doses_per_day` | `doses_per_day` = giá trị mới |\n| Chuyển sang dùng khi cần | `dosing_mode: as_needed` + `max_doses_per_day` | Đóng mọi lịch đang mở |\n| Chuyển sang uống theo giờ | `dosing_mode: scheduled` + `intake_times` | Tạo lịch mới, `days_of_week` = cả tuần |\n| Ngừng thuốc | chỉ `stopped: true` | Thuốc và mọi lịch đang mở kết thúc tại thời điểm request |\n| Dùng lại thuốc đã ngừng | chỉ `stopped: false` | `status` = `active`, `ended_at` = `null`. Thuốc `scheduled`: mở lại lịch mới với `effective_from` = thời điểm request, mỗi lịch lấy `intake_time`, `days_of_week`, `reminder_enabled` của một lịch đã đóng cùng lúc với lần ngừng gần nhất. Thuốc `as_needed`: không tạo lịch. Các field khác (liều, cách uống, tồn kho, `doses_per_day`) giữ nguyên |\n\nLịch cũ chỉ bị đóng, không bị xóa. Đổi ngày uống trong tuần không thuộc endpoint này.\n\nTrả 422 `medication_rule_violation` khi: body rỗng; `intake_times` gửi cho thuốc sẽ là `as_needed` hoặc `max_doses_per_day` gửi cho thuốc sẽ là `scheduled`; đổi `dosing_mode` mà thiếu field bắt buộc của chế độ mới; `stopped` đi kèm field khác. Thuốc đã ngừng: gửi lại `stopped: true` trả 200 và không đổi gì; gửi `stopped: false` để dùng lại; gửi field khác trả 422 `medication_stopped` (muốn sửa thì dùng lại trước). Thuốc đang dùng: gửi `stopped: false` trả 200 và không đổi gì. Thuốc `scheduled` đã ngừng mà không tìm được lịch nào đóng cùng lúc với lần ngừng (dữ liệu cũ) trả 422 `medication_rule_violation`; client hướng dẫn người dùng thêm thuốc mới.\n\nThuốc đã bị xoá trả 404 `user_medication_not_found`.\n\nIdempotent theo nội dung: gửi lại cùng body cho cùng kết quả cuối, trừ `intake_times` (mỗi lần gửi tạo lại lịch với `effective_from` mới; vô hại với nhắc lịch nhưng client không nên tự gửi lại khi không cần).",
+        "description": "Chỉ **chính người bệnh** được sửa. Người thân (dù xem được thuốc) và admin gọi endpoint này nhận 403 `khong_co_quyen` và được ghi nhật ký `denied`.\n\nGửi một hoặc nhiều field; field không gửi giữ nguyên. Quy tắc:\n\n| Muốn | Gửi | Kết quả |\n|---|---|---|\n| Đổi liều mỗi lần | `quantity_per_dose` | Lịch không đổi |\n| Đổi cách uống, tồn kho | `intake_timing`, `stock_quantity` (gửi `null` để xóa giá trị) | Lịch không đổi |\n| Đổi giờ hoặc số lần/ngày (thuốc đang `scheduled`) | `intake_times` (có thể kèm `days_of_week`) | Đóng mọi lịch đang mở, tạo lịch mới cho từng giờ, đóng và mở theo **mốc hiệu lực** của `POST /medications/{id}/schedules`; `days_of_week` = giá trị gửi kèm, không gửi thì giữ của lịch cũ. Giờ đã có trong lịch cũ giữ `reminder_enabled` cũ; giờ mới bật nhắc. `doses_per_day` = số giờ mới |\n| Đổi ngày uống trong tuần (thuốc đang `scheduled`) | `days_of_week` | Đóng mọi lịch đang mở, tạo lại lịch cùng giờ, cùng `reminder_enabled`, với ngày mới, đóng và mở theo **mốc hiệu lực** của `POST /medications/{id}/schedules`. Ngày gửi trùng ngày hiện tại: không đổi lịch |\n| Đổi số lần tối đa (thuốc đang `as_needed`) | `max_doses_per_day` | `doses_per_day` = giá trị mới |\n| Chuyển sang dùng khi cần | `dosing_mode: as_needed` + `max_doses_per_day` | Đóng mọi lịch đang mở theo **mốc hiệu lực** của `POST /medications/{id}/schedules` |\n| Chuyển sang uống theo giờ | `dosing_mode: scheduled` + `intake_times` (có thể kèm `days_of_week`) | Tạo lịch mới, bật nhắc; `days_of_week` = giá trị gửi kèm, không gửi thì cả tuần |\n| Ngừng thuốc | chỉ `stopped: true` | Thuốc kết thúc tại thời điểm request (`ended_at`); mọi lịch đang mở đóng theo **mốc hiệu lực** của `POST /medications/{id}/schedules` |\n| Dùng lại thuốc đã ngừng | chỉ `stopped: false` | `status` = `active`, `ended_at` = `null`. Thuốc `scheduled`: mở lại lịch mới theo **mốc hiệu lực** của `POST /medications/{id}/schedules`, mỗi lịch lấy `intake_time`, `days_of_week`, `reminder_enabled` của một lịch đã đóng cùng lúc với lần ngừng gần nhất. Thuốc `as_needed`: không tạo lịch. Các field khác (liều, cách uống, tồn kho, `doses_per_day`) giữ nguyên |\n\nLịch cũ chỉ bị đóng, không bị xóa. Mọi thao tác đóng hoặc mở lịch ở endpoint này (đổi giờ, đổi ngày, chuyển chế độ, ngừng, dùng lại) theo **mốc hiệu lực** của `POST /medications/{id}/schedules`: thường là thời điểm request; lịch có liều đã xác nhận sớm đóng ngay sau giờ dự kiến của liều đó, và lịch mới cùng giờ không bắt đầu trước mốc ấy (tối đa khoảng 30 phút). Vì vậy `ended_at` của lịch đóng lúc ngừng có thể muộn hơn `ended_at` của thuốc. Một giờ dự kiến không bao giờ thuộc hai lịch của cùng thuốc. Ngày uống trong tuần là chung cho mọi giờ của thuốc. Thêm, sửa, xoá hay bật/tắt nhắc **từng** giờ dùng `/medications/{id}/schedules`.\n\nTrả 422 `medication_rule_violation` khi: body rỗng; `intake_times` hoặc `days_of_week` gửi cho thuốc sẽ là `as_needed`, hoặc `max_doses_per_day` gửi cho thuốc sẽ là `scheduled`; đổi `dosing_mode` mà thiếu field bắt buộc của chế độ mới; `stopped` đi kèm field khác. Thuốc đã ngừng: gửi lại `stopped: true` trả 200 và không đổi gì; gửi `stopped: false` để dùng lại; gửi field khác trả 422 `medication_stopped` (muốn sửa thì dùng lại trước). Thuốc đang dùng: gửi `stopped: false` trả 200 và không đổi gì. Thuốc `scheduled` đã ngừng mà không tìm được lịch nào đóng cùng lúc với lần ngừng (dữ liệu cũ) trả 422 `medication_rule_violation`; client hướng dẫn người dùng thêm thuốc mới.\n\nThuốc đã bị xoá trả 404 `user_medication_not_found`.\n\nIdempotent theo nội dung: gửi lại cùng body cho cùng kết quả cuối, trừ `intake_times` (mỗi lần gửi tạo lại lịch với `effective_from` mới; vô hại với nhắc lịch nhưng client không nên tự gửi lại khi không cần).",
         "security": [
           {
             "bearerAuth": []
@@ -1032,6 +1032,16 @@
                       "07:00",
                       "12:00",
                       "19:00"
+                    ]
+                  }
+                },
+                "change_days": {
+                  "summary": "Đổi ngày uống: chỉ thứ Hai, Tư, Sáu",
+                  "value": {
+                    "days_of_week": [
+                      1,
+                      3,
+                      5
                     ]
                   }
                 },
@@ -1223,7 +1233,7 @@
         ],
         "operationId": "deleteUserMedication",
         "summary": "Xoá một thuốc của chính người gọi",
-        "description": "Chỉ **chính người bệnh** được xoá. Người thân và admin nhận 403 `khong_co_quyen` và được ghi nhật ký `denied`; người bệnh không còn consent `health_data` nhận 403 `consent_revoked`.\n\nTrong một transaction: mọi lịch đang mở kết thúc tại thời điểm request; thuốc đang dùng được ngừng (`ended_at` = thời điểm request, thuốc đã ngừng giữ `ended_at` cũ); thuốc được đánh dấu đã xoá. Lịch sử liều đã ghi (`dose_logs`) và dữ liệu phân tích tương tác **giữ nguyên**, nhưng thuốc không còn xuất hiện ở bất kỳ endpoint nào của người bệnh: `GET /medications` bỏ qua; `GET`, `PATCH`, `DELETE /medications/{id}` trả 404. Không có thao tác khôi phục; muốn dùng lại thì thêm thuốc mới.\n\nSau khi xoá, không còn lượt uống nào được sinh hay đánh dấu bỏ lỡ cho thuốc này.\n\nGửi lại: lần xoá thứ hai trả 404. Client gửi lại sau lỗi mạng mà nhận 404 thì coi như đã xoá.",
+        "description": "Chỉ **chính người bệnh** được xoá. Người thân và admin nhận 403 `khong_co_quyen` và được ghi nhật ký `denied`; người bệnh không còn consent `health_data` nhận 403 `consent_revoked`.\n\nTrong một transaction: mọi lịch đang mở đóng theo **mốc hiệu lực** của `POST /medications/{id}/schedules` (thường là thời điểm request; sau liều đã xác nhận sớm nếu có); thuốc đang dùng được ngừng (`ended_at` = thời điểm request, thuốc đã ngừng giữ `ended_at` cũ); thuốc được đánh dấu đã xoá. Lịch sử liều đã ghi (`dose_logs`) và dữ liệu phân tích tương tác **giữ nguyên**, nhưng thuốc không còn xuất hiện ở bất kỳ endpoint nào của người bệnh: `GET /medications` bỏ qua; `GET`, `PATCH`, `DELETE /medications/{id}` trả 404. Không có thao tác khôi phục; muốn dùng lại thì thêm thuốc mới.\n\nSau khi xoá, không còn lượt uống nào được sinh hay đánh dấu bỏ lỡ cho thuốc này.\n\nGửi lại: lần xoá thứ hai trả 404. Client gửi lại sau lỗi mạng mà nhận 404 thì coi như đã xoá.",
         "security": [
           {
             "bearerAuth": []
@@ -1243,6 +1253,739 @@
             "$ref": "#/components/responses/UserMedicationNotFound"
           }
         }
+      }
+    },
+    "/medications/{id}/schedules": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "Id thuốc của người bệnh (`UserMedication.id`), không phải id danh mục.",
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          }
+        }
+      ],
+      "post": {
+        "tags": [
+          "medication"
+        ],
+        "operationId": "addMedicationSchedule",
+        "summary": "Thêm một giờ uống cho thuốc của chính người gọi",
+        "description": "Chỉ **chính người bệnh** được ghi. Người thân (dù xem được thuốc) và admin nhận 403 `khong_co_quyen` và được ghi nhật ký `denied`; người bệnh không còn consent `health_data` nhận 403 `consent_revoked`.\n\nThứ tự kiểm: body sai cấu trúc (422 `ValidationError`, có thể trả trước mọi kiểm tra khác) → thuốc không tồn tại hoặc đã xoá (404 `user_medication_not_found`) → quyền (403) → thuốc đã ngừng (422 `medication_stopped`) → thuốc `as_needed` (422 `medication_rule_violation`) → giờ trùng một lịch đang mở (422 `schedule_time_conflict`) → đã có 6 lịch đang mở (422 `schedule_limit_reached`).\n\nTạo một lịch mới: `intake_time` gửi lên, `days_of_week` = ngày uống hiện tại của thuốc, `reminder_enabled` = giá trị gửi (mặc định `true`), `effective_from` theo mốc hiệu lực bên dưới. Các lịch khác không đổi. `doses_per_day` tăng 1.\n\nLịch là bản ghi có phiên bản: mọi thay đổi **đóng** lịch cũ (lịch cũ và lịch sử liều của nó giữ nguyên; lịch cũ không còn trong `UserMedication.schedules` nhưng vẫn có trong `GET /patients/{patient_id}/schedules` 30 ngày) và, khi cần, tạo lịch mới với id mới. Các request ghi trên cùng một thuốc được xử lý lần lượt.\n\n**Mốc hiệu lực** (QD-16). Lịch có hiệu lực trong khoảng nửa mở [`effective_from`, `ended_at`). Gọi T là thời điểm request.\n- Đóng một lịch: `ended_at` = T; nếu lịch đã có liều được ghi với giờ dự kiến từ T trở đi (xác nhận sớm, tối đa 30 phút), `ended_at` = ngay sau giờ dự kiến muộn nhất của các liều đó (không quá 1 giây sau), để liều vẫn thuộc lịch cũ.\n- Lịch thay thế có `effective_from` = `ended_at` muộn nhất của các lịch nó thay thế.\n- Lịch thêm mới có `effective_from` = T, hoặc = `ended_at` của lịch cùng giờ của cùng thuốc vừa đóng nếu `ended_at` đó còn ở tương lai.\nVì vậy `effective_from` của lịch mới và `ended_at` của lịch vừa đóng có thể ở tương lai (tối đa khoảng 30 phút). Một lượt uống (thuốc, giờ dự kiến) không bao giờ thuộc hai lịch cùng lúc. Liều đã đến giờ của lịch cũ vẫn xác nhận bằng `schedule_id` của lịch cũ.\n\nGửi lại: không có khóa idempotency. Lần gửi lại sau khi lần đầu đã thành công trả 422 `schedule_time_conflict` và không tạo gì thêm; client nhận lỗi này sau một lần gửi lại thì tải lại thuốc để xem giờ đã có chưa.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MedicationScheduleCreate"
+              },
+              "examples": {
+                "add": {
+                  "summary": "Thêm giờ 12:00",
+                  "value": {
+                    "intake_time": "12:00"
+                  }
+                },
+                "add_silent": {
+                  "summary": "Thêm giờ 22:00, không nhắc",
+                  "value": {
+                    "intake_time": "22:00",
+                    "reminder_enabled": false
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Đã thêm. Body là thuốc sau khi thêm; lịch mới là phần tử của `schedules` có `intake_time` vừa gửi (giờ là duy nhất giữa các lịch đang mở của một thuốc).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserMedication"
+                },
+                "examples": {
+                  "added": {
+                    "value": {
+                      "id": 42,
+                      "medication": {
+                        "id": 1007,
+                        "name": "Amlodipin 5mg",
+                        "active_ingredient": "Amlodipin besilat",
+                        "strength_text": "5 mg",
+                        "dosage_form": "Viên nén"
+                      },
+                      "dosing_mode": "scheduled",
+                      "quantity_per_dose": 1,
+                      "doses_per_day": 3,
+                      "intake_timing": "after_meal",
+                      "stock_quantity": 30,
+                      "has_interaction_data": true,
+                      "status": "active",
+                      "ended_at": null,
+                      "schedules": [
+                        {
+                          "id": 301,
+                          "intake_time": "08:00",
+                          "days_of_week": [
+                            1,
+                            2,
+                            3,
+                            4,
+                            5,
+                            6,
+                            7
+                          ],
+                          "reminder_enabled": true,
+                          "effective_from": "2026-10-01T09:15:02+07:00"
+                        },
+                        {
+                          "id": 390,
+                          "intake_time": "12:00",
+                          "days_of_week": [
+                            1,
+                            2,
+                            3,
+                            4,
+                            5,
+                            6,
+                            7
+                          ],
+                          "reminder_enabled": true,
+                          "effective_from": "2026-10-09T10:20:31+07:00"
+                        },
+                        {
+                          "id": 302,
+                          "intake_time": "20:00",
+                          "days_of_week": [
+                            1,
+                            2,
+                            3,
+                            4,
+                            5,
+                            6,
+                            7
+                          ],
+                          "reminder_enabled": true,
+                          "effective_from": "2026-10-01T09:15:02+07:00"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/UserMedicationNotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ScheduleUnprocessableEntity"
+          }
+        }
+      }
+    },
+    "/medications/{id}/schedules/{schedule_id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "Id thuốc của người bệnh (`UserMedication.id`), không phải id danh mục.",
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          }
+        },
+        {
+          "name": "schedule_id",
+          "in": "path",
+          "required": true,
+          "description": "Id lịch (`MedicationSchedule.id`). Phải là lịch **đang mở** của thuốc `id`.",
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          }
+        }
+      ],
+      "patch": {
+        "tags": [
+          "medication"
+        ],
+        "operationId": "updateMedicationSchedule",
+        "summary": "Sửa giờ hoặc bật/tắt nhắc của một lịch",
+        "description": "Chỉ **chính người bệnh** được ghi. Người thân (dù xem được thuốc) và admin nhận 403 `khong_co_quyen` và được ghi nhật ký `denied`; người bệnh không còn consent `health_data` nhận 403 `consent_revoked`.\n\nThứ tự kiểm: body sai cấu trúc (422 `ValidationError`, có thể trả trước mọi kiểm tra khác) → thuốc không tồn tại hoặc đã xoá (404 `user_medication_not_found`) → quyền (403) → thuốc đã ngừng (422 `medication_stopped`) → lịch không phải lịch đang mở của thuốc (404 `medication_schedule_not_found`) → giờ mới trùng một lịch đang mở khác (422 `schedule_time_conflict`).\n\nKết quả:\n\n| Gửi | Kết quả |\n|---|---|\n| Giá trị giống hệt hiện tại | 200, không đổi gì, lịch giữ id |\n| `intake_time` và/hoặc `reminder_enabled` khác hiện tại | Đóng lịch cũ, tạo lịch mới id mới với giờ và trạng thái nhắc sau khi sửa (field không gửi lấy của lịch cũ), cùng `days_of_week`, `effective_from` = `ended_at` của lịch cũ (mốc hiệu lực bên dưới) |\n\n`doses_per_day` không đổi. Các lịch khác không đổi.\n\nLịch là bản ghi có phiên bản: mọi thay đổi **đóng** lịch cũ (lịch cũ và lịch sử liều của nó giữ nguyên; lịch cũ không còn trong `UserMedication.schedules` nhưng vẫn có trong `GET /patients/{patient_id}/schedules` 30 ngày) và, khi cần, tạo lịch mới với id mới. Các request ghi trên cùng một thuốc được xử lý lần lượt.\n\n**Mốc hiệu lực** (QD-16). Lịch có hiệu lực trong khoảng nửa mở [`effective_from`, `ended_at`). Gọi T là thời điểm request.\n- Đóng một lịch: `ended_at` = T; nếu lịch đã có liều được ghi với giờ dự kiến từ T trở đi (xác nhận sớm, tối đa 30 phút), `ended_at` = ngay sau giờ dự kiến muộn nhất của các liều đó (không quá 1 giây sau), để liều vẫn thuộc lịch cũ.\n- Lịch thay thế có `effective_from` = `ended_at` muộn nhất của các lịch nó thay thế.\n- Lịch thêm mới có `effective_from` = T, hoặc = `ended_at` của lịch cùng giờ của cùng thuốc vừa đóng nếu `ended_at` đó còn ở tương lai.\nVì vậy `effective_from` của lịch mới và `ended_at` của lịch vừa đóng có thể ở tương lai (tối đa khoảng 30 phút). Một lượt uống (thuốc, giờ dự kiến) không bao giờ thuộc hai lịch cùng lúc. Liều đã đến giờ của lịch cũ vẫn xác nhận bằng `schedule_id` của lịch cũ.\n\nGửi lại: lần gửi lại sau khi lần đầu đã thành công trả 404 `medication_schedule_not_found` (lịch cũ đã đóng). Client nhận 404 sau một lần gửi lại thì tải lại thuốc.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MedicationScheduleUpdate"
+              },
+              "examples": {
+                "change_time": {
+                  "summary": "Đổi 08:00 thành 07:00",
+                  "value": {
+                    "intake_time": "07:00"
+                  }
+                },
+                "reminder_off": {
+                  "summary": "Tắt nhắc",
+                  "value": {
+                    "reminder_enabled": false
+                  }
+                },
+                "both": {
+                  "summary": "Đổi giờ và bật nhắc",
+                  "value": {
+                    "intake_time": "07:30",
+                    "reminder_enabled": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Thuốc sau khi sửa. Lịch đã sửa là phần tử của `schedules` có `intake_time` sau khi sửa; id của nó khác `schedule_id` nếu có thay đổi.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserMedication"
+                },
+                "examples": {
+                  "time_changed": {
+                    "summary": "Sau khi đổi 08:00 thành 07:00",
+                    "value": {
+                      "id": 42,
+                      "medication": {
+                        "id": 1007,
+                        "name": "Amlodipin 5mg",
+                        "active_ingredient": "Amlodipin besilat",
+                        "strength_text": "5 mg",
+                        "dosage_form": "Viên nén"
+                      },
+                      "dosing_mode": "scheduled",
+                      "quantity_per_dose": 1,
+                      "doses_per_day": 2,
+                      "intake_timing": "after_meal",
+                      "stock_quantity": 30,
+                      "has_interaction_data": true,
+                      "status": "active",
+                      "ended_at": null,
+                      "schedules": [
+                        {
+                          "id": 391,
+                          "intake_time": "07:00",
+                          "days_of_week": [
+                            1,
+                            2,
+                            3,
+                            4,
+                            5,
+                            6,
+                            7
+                          ],
+                          "reminder_enabled": true,
+                          "effective_from": "2026-10-09T10:20:31+07:00"
+                        },
+                        {
+                          "id": 302,
+                          "intake_time": "20:00",
+                          "days_of_week": [
+                            1,
+                            2,
+                            3,
+                            4,
+                            5,
+                            6,
+                            7
+                          ],
+                          "reminder_enabled": true,
+                          "effective_from": "2026-10-01T09:15:02+07:00"
+                        }
+                      ]
+                    }
+                  },
+                  "reminder_off": {
+                    "summary": "Sau khi tắt nhắc 08:00",
+                    "value": {
+                      "id": 42,
+                      "medication": {
+                        "id": 1007,
+                        "name": "Amlodipin 5mg",
+                        "active_ingredient": "Amlodipin besilat",
+                        "strength_text": "5 mg",
+                        "dosage_form": "Viên nén"
+                      },
+                      "dosing_mode": "scheduled",
+                      "quantity_per_dose": 1,
+                      "doses_per_day": 2,
+                      "intake_timing": "after_meal",
+                      "stock_quantity": 30,
+                      "has_interaction_data": true,
+                      "status": "active",
+                      "ended_at": null,
+                      "schedules": [
+                        {
+                          "id": 392,
+                          "intake_time": "08:00",
+                          "days_of_week": [
+                            1,
+                            2,
+                            3,
+                            4,
+                            5,
+                            6,
+                            7
+                          ],
+                          "reminder_enabled": false,
+                          "effective_from": "2026-10-09T10:20:31+07:00"
+                        },
+                        {
+                          "id": 302,
+                          "intake_time": "20:00",
+                          "days_of_week": [
+                            1,
+                            2,
+                            3,
+                            4,
+                            5,
+                            6,
+                            7
+                          ],
+                          "reminder_enabled": true,
+                          "effective_from": "2026-10-01T09:15:02+07:00"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/MedicationScheduleNotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ScheduleUnprocessableEntity"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "medication"
+        ],
+        "operationId": "removeMedicationSchedule",
+        "summary": "Huỷ một giờ uống của thuốc",
+        "description": "Chỉ **chính người bệnh** được ghi. Người thân (dù xem được thuốc) và admin nhận 403 `khong_co_quyen` và được ghi nhật ký `denied`; người bệnh không còn consent `health_data` nhận 403 `consent_revoked`.\n\nThứ tự kiểm: body sai cấu trúc (422 `ValidationError`, có thể trả trước mọi kiểm tra khác) → thuốc không tồn tại hoặc đã xoá (404 `user_medication_not_found`) → quyền (403) → thuốc đã ngừng (422 `medication_stopped`) → lịch không phải lịch đang mở của thuốc (404 `medication_schedule_not_found`) → đây là lịch đang mở cuối cùng (422 `last_schedule_not_removable`).\n\nĐóng lịch (`ended_at` theo mốc hiệu lực bên dưới); không xoá dòng, lịch sử liều đã ghi giữ nguyên. `doses_per_day` giảm 1. Các lịch khác không đổi.\n\nLịch là bản ghi có phiên bản: mọi thay đổi **đóng** lịch cũ (lịch cũ và lịch sử liều của nó giữ nguyên; lịch cũ không còn trong `UserMedication.schedules` nhưng vẫn có trong `GET /patients/{patient_id}/schedules` 30 ngày) và, khi cần, tạo lịch mới với id mới. Các request ghi trên cùng một thuốc được xử lý lần lượt.\n\n**Mốc hiệu lực** (QD-16). Lịch có hiệu lực trong khoảng nửa mở [`effective_from`, `ended_at`). Gọi T là thời điểm request.\n- Đóng một lịch: `ended_at` = T; nếu lịch đã có liều được ghi với giờ dự kiến từ T trở đi (xác nhận sớm, tối đa 30 phút), `ended_at` = ngay sau giờ dự kiến muộn nhất của các liều đó (không quá 1 giây sau), để liều vẫn thuộc lịch cũ.\n- Lịch thay thế có `effective_from` = `ended_at` muộn nhất của các lịch nó thay thế.\n- Lịch thêm mới có `effective_from` = T, hoặc = `ended_at` của lịch cùng giờ của cùng thuốc vừa đóng nếu `ended_at` đó còn ở tương lai.\nVì vậy `effective_from` của lịch mới và `ended_at` của lịch vừa đóng có thể ở tương lai (tối đa khoảng 30 phút). Một lượt uống (thuốc, giờ dự kiến) không bao giờ thuộc hai lịch cùng lúc. Liều đã đến giờ của lịch cũ vẫn xác nhận bằng `schedule_id` của lịch cũ.\n\nGửi lại: lần gửi lại sau khi lần đầu đã thành công trả 404 `medication_schedule_not_found`. Client nhận 404 sau một lần gửi lại thì coi như đã huỷ và tải lại thuốc.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Thuốc sau khi huỷ lịch.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserMedication"
+                },
+                "examples": {
+                  "removed": {
+                    "summary": "Sau khi huỷ giờ 20:00",
+                    "value": {
+                      "id": 42,
+                      "medication": {
+                        "id": 1007,
+                        "name": "Amlodipin 5mg",
+                        "active_ingredient": "Amlodipin besilat",
+                        "strength_text": "5 mg",
+                        "dosage_form": "Viên nén"
+                      },
+                      "dosing_mode": "scheduled",
+                      "quantity_per_dose": 1,
+                      "doses_per_day": 1,
+                      "intake_timing": "after_meal",
+                      "stock_quantity": 30,
+                      "has_interaction_data": true,
+                      "status": "active",
+                      "ended_at": null,
+                      "schedules": [
+                        {
+                          "id": 301,
+                          "intake_time": "08:00",
+                          "days_of_week": [
+                            1,
+                            2,
+                            3,
+                            4,
+                            5,
+                            6,
+                            7
+                          ],
+                          "reminder_enabled": true,
+                          "effective_from": "2026-10-01T09:15:02+07:00"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/MedicationScheduleNotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ScheduleUnprocessableEntity"
+          }
+        }
+      }
+    },
+    "/patients/{patient_id}/schedules": {
+      "parameters": [
+        {
+          "name": "patient_id",
+          "in": "path",
+          "required": true,
+          "description": "Id tài khoản người bệnh (UUID). Sai định dạng trả 422 `ValidationError`.",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "medication"
+        ],
+        "operationId": "listPatientSchedules",
+        "summary": "Tải lịch uống của một người bệnh (đang hiệu lực, sắp hiệu lực, đã đóng trong 30 ngày)",
+        "description": "Người được phép: chính người bệnh (có consent `health_data`); người thân có liên kết `active`, đang bật chia sẻ và người bệnh có consent `health_data` và `family_sharing`. Người thân được ghi nhật ký truy cập `allowed` ở mỗi request (mỗi trang). Quyền được kiểm lại ở mỗi request: rút consent, tắt chia sẻ hoặc huỷ liên kết có hiệu lực ngay ở request kế tiếp, kể cả giữa hai trang.\n\nKhông có quyền: 403 `khong_co_quyen` (ghi nhật ký `denied`), kể cả **admin** (QD-32); hoặc `consent_revoked` khi người bệnh tự gọi mà chưa có consent `health_data`. `patient_id` không ứng với tài khoản nào cũng trả 403 `khong_co_quyen` (không ghi nhật ký), để không lộ tài khoản nào tồn tại.\n\nGồm mọi phiên bản lịch của các thuốc **chưa xoá** của người bệnh (QD-18) mà:\n- đang mở (`ended_at` = `null`), kể cả lịch có `effective_from` trong tương lai; hoặc\n- đã đóng với `ended_at` sau thời điểm request trừ 30 ngày, kể cả lịch có `ended_at` trong tương lai.\n\nVì vậy có cả lịch của thuốc đã ngừng hoặc đã chuyển sang `as_needed` trong 30 ngày qua. Lịch tắt nhắc cũng có. Không gồm lịch của thuốc đã xoá. Người bệnh không có lịch nào: `items` rỗng, `next_cursor` = `null`.\n\nDùng ở client:\n- Lên lịch nhắc từ các lịch có `reminder_enabled` và có lượt uống nằm trong khoảng hiệu lực [`effective_from`, `ended_at`).\n- Xác nhận liều bằng `id` của đúng phiên bản lịch chứa giờ dự kiến của liều, kể cả lịch đã đóng (QD-16).\n- Tải hết các trang rồi mới thay toàn bộ bản sao cục bộ.\n- **App của người thân không lưu kết quả vào CSDL hay bộ nhớ bền của máy**; chỉ giữ trong bộ nhớ phiên và xoá khi mất mạng, vào nền, đăng xuất hoặc bị từ chối quyền (QD-29).\n\nPhân trang theo con trỏ (quy ước chung), sắp theo `id` tăng dần. Lịch tạo hoặc đóng trong lúc đang tải các trang có thể chưa có trong lần tải này; lần đồng bộ sau sẽ có.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lịch đang mở của người bệnh.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PatientScheduleList"
+                },
+                "examples": {
+                  "first_page": {
+                    "summary": "Trang đầu (limit=3): lịch 290 đã đóng 10 ngày trước, 301, 302 đang mở",
+                    "value": {
+                      "items": [
+                        {
+                          "id": 290,
+                          "user_medication_id": 42,
+                          "medication": {
+                            "id": 1007,
+                            "name": "Amlodipin 5mg",
+                            "active_ingredient": "Amlodipin besilat",
+                            "strength_text": "5 mg",
+                            "dosage_form": "Viên nén"
+                          },
+                          "quantity_per_dose": 1,
+                          "doses_per_day": 2,
+                          "intake_timing": "after_meal",
+                          "intake_time": "07:00",
+                          "days_of_week": [
+                            1,
+                            2,
+                            3,
+                            4,
+                            5,
+                            6,
+                            7
+                          ],
+                          "reminder_enabled": true,
+                          "effective_from": "2026-09-20T10:00:00+07:00",
+                          "ended_at": "2026-09-29T08:00:00+07:00"
+                        },
+                        {
+                          "id": 301,
+                          "user_medication_id": 42,
+                          "medication": {
+                            "id": 1007,
+                            "name": "Amlodipin 5mg",
+                            "active_ingredient": "Amlodipin besilat",
+                            "strength_text": "5 mg",
+                            "dosage_form": "Viên nén"
+                          },
+                          "quantity_per_dose": 1,
+                          "doses_per_day": 2,
+                          "intake_timing": "after_meal",
+                          "intake_time": "08:00",
+                          "days_of_week": [
+                            1,
+                            2,
+                            3,
+                            4,
+                            5,
+                            6,
+                            7
+                          ],
+                          "reminder_enabled": true,
+                          "effective_from": "2026-10-01T09:15:02+07:00",
+                          "ended_at": null
+                        },
+                        {
+                          "id": 302,
+                          "user_medication_id": 42,
+                          "medication": {
+                            "id": 1007,
+                            "name": "Amlodipin 5mg",
+                            "active_ingredient": "Amlodipin besilat",
+                            "strength_text": "5 mg",
+                            "dosage_form": "Viên nén"
+                          },
+                          "quantity_per_dose": 1,
+                          "doses_per_day": 2,
+                          "intake_timing": "after_meal",
+                          "intake_time": "20:00",
+                          "days_of_week": [
+                            1,
+                            2,
+                            3,
+                            4,
+                            5,
+                            6,
+                            7
+                          ],
+                          "reminder_enabled": true,
+                          "effective_from": "2026-10-01T09:15:02+07:00",
+                          "ended_at": null
+                        }
+                      ],
+                      "next_cursor": "eyJhZnRlciI6MzAyfQ"
+                    }
+                  },
+                  "last_page": {
+                    "summary": "Trang cuối: lịch 391 (tắt nhắc) thay lịch 388, bắt đầu ngay sau liều 08:00 đã xác nhận sớm",
+                    "value": {
+                      "items": [
+                        {
+                          "id": 312,
+                          "user_medication_id": 44,
+                          "medication": {
+                            "id": 1452,
+                            "name": "Metformin 500mg",
+                            "active_ingredient": "Metformin hydroclorid",
+                            "strength_text": "500 mg",
+                            "dosage_form": "Viên nén bao phim"
+                          },
+                          "quantity_per_dose": 1,
+                          "doses_per_day": 2,
+                          "intake_timing": "after_meal",
+                          "intake_time": "18:00",
+                          "days_of_week": [
+                            1,
+                            2,
+                            3,
+                            4,
+                            5,
+                            6,
+                            7
+                          ],
+                          "reminder_enabled": false,
+                          "effective_from": "2026-10-01T09:15:02+07:00",
+                          "ended_at": null
+                        },
+                        {
+                          "id": 388,
+                          "user_medication_id": 44,
+                          "medication": {
+                            "id": 1452,
+                            "name": "Metformin 500mg",
+                            "active_ingredient": "Metformin hydroclorid",
+                            "strength_text": "500 mg",
+                            "dosage_form": "Viên nén bao phim"
+                          },
+                          "quantity_per_dose": 1,
+                          "doses_per_day": 2,
+                          "intake_timing": "after_meal",
+                          "intake_time": "08:00",
+                          "days_of_week": [
+                            1,
+                            2,
+                            3,
+                            4,
+                            5,
+                            6,
+                            7
+                          ],
+                          "reminder_enabled": true,
+                          "effective_from": "2026-10-01T09:15:02+07:00",
+                          "ended_at": "2026-10-09T08:00:01+07:00"
+                        },
+                        {
+                          "id": 391,
+                          "user_medication_id": 44,
+                          "medication": {
+                            "id": 1452,
+                            "name": "Metformin 500mg",
+                            "active_ingredient": "Metformin hydroclorid",
+                            "strength_text": "500 mg",
+                            "dosage_form": "Viên nén bao phim"
+                          },
+                          "quantity_per_dose": 1,
+                          "doses_per_day": 2,
+                          "intake_timing": "after_meal",
+                          "intake_time": "08:00",
+                          "days_of_week": [
+                            1,
+                            2,
+                            3,
+                            4,
+                            5,
+                            6,
+                            7
+                          ],
+                          "reminder_enabled": false,
+                          "effective_from": "2026-10-09T08:00:01+07:00",
+                          "ended_at": null
+                        }
+                      ],
+                      "next_cursor": null
+                    }
+                  },
+                  "empty": {
+                    "value": {
+                      "items": [],
+                      "next_cursor": null
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "description": "`patient_id` không phải UUID hoặc `limit` sai (`ValidationError`); con trỏ hỏng (`ErrorDetail` `invalid_cursor`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    }
+                  ]
+                },
+                "examples": {
+                  "patient_id": {
+                    "value": {
+                      "detail": [
+                        {
+                          "loc": [
+                            "path",
+                            "patient_id"
+                          ],
+                          "msg": "Input should be a valid UUID",
+                          "type": "uuid_parsing"
+                        }
+                      ]
+                    }
+                  },
+                  "limit": {
+                    "value": {
+                      "detail": [
+                        {
+                          "loc": [
+                            "query",
+                            "limit"
+                          ],
+                          "msg": "Input should be less than or equal to 200",
+                          "type": "less_than_equal"
+                        }
+                      ]
+                    }
+                  },
+                  "cursor": {
+                    "value": {
+                      "detail": "invalid_cursor"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Số lịch tối đa của trang. Ngoài khoảng trả 422 `ValidationError`.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 100
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "`next_cursor` của trang trước; bỏ trống ở trang đầu. Hỏng hoặc của người bệnh khác trả 422 `invalid_cursor`.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          }
+        ]
       }
     },
     "/catalog/medications": {
@@ -1900,7 +2643,7 @@
         "type": "object",
         "additionalProperties": false,
         "minProperties": 1,
-        "description": "Xem bảng quy tắc ở mô tả `PATCH /medications/{id}`. Không có `medication_id` (đổi thuốc = ngừng thuốc cũ và thêm thuốc mới) và không có `days_of_week`.",
+        "description": "Xem bảng quy tắc ở mô tả `PATCH /medications/{id}`. Không có `medication_id` (đổi thuốc = ngừng thuốc cũ và thêm thuốc mới).",
         "properties": {
           "quantity_per_dose": {
             "$ref": "#/components/schemas/QuantityPerDose"
@@ -1910,6 +2653,10 @@
           },
           "intake_times": {
             "$ref": "#/components/schemas/IntakeTimes"
+          },
+          "days_of_week": {
+            "$ref": "#/components/schemas/DaysOfWeek",
+            "description": "Ngày uống trong tuần, chung cho mọi giờ của thuốc. Chỉ dùng với thuốc sẽ là `scheduled`."
           },
           "max_doses_per_day": {
             "$ref": "#/components/schemas/MaxDosesPerDay"
@@ -2009,7 +2756,7 @@
           "effective_from": {
             "type": "string",
             "format": "date-time",
-            "description": "Lượt uống trước mốc này không thuộc lịch."
+            "description": "Lịch có hiệu lực trong khoảng nửa mở [`effective_from`, `ended_at`). Lượt uống trước mốc này không thuộc lịch. Có thể ở tương lai, tối đa khoảng 30 phút, khi lịch thay thế phải chờ sau một liều đã xác nhận sớm của lịch cũ."
           }
         }
       },
@@ -2501,6 +3248,149 @@
             "$ref": "#/components/schemas/ConsentDocumentVersion"
           }
         }
+      },
+      "DaysOfWeek": {
+        "type": "array",
+        "items": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 7
+        },
+        "minItems": 1,
+        "maxItems": 7,
+        "uniqueItems": true,
+        "description": "Ngày trong tuần theo ISO 8601: 1 = Thứ Hai … 7 = Chủ Nhật. Server lưu theo thứ tự tăng dần."
+      },
+      "MedicationScheduleCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "intake_time"
+        ],
+        "description": "Thêm một giờ uống cho thuốc `scheduled`. Không có `days_of_week`: ngày uống là chung cho cả thuốc (đổi bằng `PATCH /medications/{id}`).",
+        "properties": {
+          "intake_time": {
+            "$ref": "#/components/schemas/IntakeTime"
+          },
+          "reminder_enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Bật nhắc cho giờ này. Không gửi = `true`."
+          }
+        }
+      },
+      "MedicationScheduleUpdate": {
+        "type": "object",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "description": "Gửi một hoặc cả hai field; field không gửi giữ nguyên. Không có `days_of_week` (chung cho cả thuốc, đổi bằng `PATCH /medications/{id}`).",
+        "properties": {
+          "intake_time": {
+            "$ref": "#/components/schemas/IntakeTime"
+          },
+          "reminder_enabled": {
+            "type": "boolean",
+            "description": "`false`: tắt nhắc giờ này; lịch tắt nhắc không sinh lượt nhắc và không bị đánh dấu bỏ lỡ."
+          }
+        }
+      },
+      "PatientSchedule": {
+        "type": "object",
+        "required": [
+          "id",
+          "user_medication_id",
+          "medication",
+          "quantity_per_dose",
+          "doses_per_day",
+          "intake_timing",
+          "intake_time",
+          "days_of_week",
+          "reminder_enabled",
+          "effective_from",
+          "ended_at"
+        ],
+        "description": "Một phiên bản lịch, kèm thông tin thuốc đủ để hiển thị nhắc và xác nhận liều mà không cần gọi thêm.",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Id lịch (`MedicationSchedule.id`)."
+          },
+          "user_medication_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Id thuốc của người bệnh (`UserMedication.id`)."
+          },
+          "medication": {
+            "$ref": "#/components/schemas/CatalogMedicationSummary"
+          },
+          "quantity_per_dose": {
+            "type": "number",
+            "description": "Liều mỗi lần **hiện tại** của thuốc."
+          },
+          "doses_per_day": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Số lần uống mỗi ngày **hiện tại** của thuốc (không phải tại thời điểm của phiên bản lịch này)."
+          },
+          "intake_timing": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IntakeTiming"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "intake_time": {
+            "$ref": "#/components/schemas/IntakeTime"
+          },
+          "days_of_week": {
+            "$ref": "#/components/schemas/DaysOfWeek"
+          },
+          "reminder_enabled": {
+            "type": "boolean"
+          },
+          "effective_from": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Đầu khoảng hiệu lực nửa mở [`effective_from`, `ended_at`). Có thể ở tương lai."
+          },
+          "ended_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Cuối khoảng hiệu lực (không gồm mốc này). `null`: lịch đang mở. Có thể ở tương lai (tối đa khoảng 30 phút) với lịch vừa đóng sau một liều xác nhận sớm. Lượt uống có giờ dự kiến trong khoảng hiệu lực vẫn xác nhận bằng `id` của lịch này, kể cả khi lịch đã đóng."
+          }
+        }
+      },
+      "PatientScheduleList": {
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 200,
+            "items": {
+              "$ref": "#/components/schemas/PatientSchedule"
+            },
+            "description": "Một trang lịch, sắp theo `id` tăng dần."
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Con trỏ của trang kế; `null` ở trang cuối."
+          }
+        }
       }
     },
     "responses": {
@@ -2518,7 +3408,7 @@
         }
       },
       "Forbidden": {
-        "description": "Không có quyền. `detail`:\n- `consent_revoked`: người bệnh tự truy cập nhưng chưa có (hoặc đã rút) consent `health_data`. Client mời người dùng đồng ý rồi gọi `POST /consents` với `purpose = health_data`; request kế tiếp sau khi đồng ý thành công sẽ được phép.\n- `khong_co_quyen`: người khác không có quyền với thuốc này, hoặc người thân/admin cố ghi. Lần truy cập được ghi `denied` vào nhật ký truy cập.",
+        "description": "Không có quyền. `detail`:\n- `consent_revoked`: người bệnh tự truy cập nhưng chưa có (hoặc đã rút) consent `health_data`. Client mời người dùng đồng ý rồi gọi `POST /consents` với `purpose = health_data`; request kế tiếp sau khi đồng ý thành công sẽ được phép.\n- `khong_co_quyen`: người khác không có quyền với thuốc hoặc lịch uống của người bệnh này (kể cả **admin**, QD-32), hoặc người thân cố ghi. Lần truy cập được ghi `denied` vào nhật ký truy cập.",
         "content": {
           "application/json": {
             "schema": {
@@ -2639,6 +3529,92 @@
             },
             "example": {
               "detail": "auth_provider_unavailable"
+            }
+          }
+        }
+      },
+      "MedicationScheduleNotFound": {
+        "description": "`detail`:\n- `user_medication_not_found`: không có thuốc nào với id này, hoặc thuốc đã bị xoá.\n- `medication_schedule_not_found`: không có lịch đang mở nào với `schedule_id` này thuộc thuốc `id`: lịch không tồn tại, thuộc thuốc khác, hoặc **đã bị đóng** (kể cả khi `ended_at` còn ở tương lai; do sửa, xoá, đổi giờ, đổi ngày, ngừng thuốc, kể cả bởi request khác vừa xong). Client tải lại thuốc bằng `GET /medications/{id}` rồi để người dùng chọn lại; server không áp thao tác sang lịch khác.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "examples": {
+              "medication": {
+                "value": {
+                  "detail": "user_medication_not_found"
+                }
+              },
+              "schedule": {
+                "value": {
+                  "detail": "medication_schedule_not_found"
+                }
+              }
+            }
+          }
+        }
+      },
+      "ScheduleUnprocessableEntity": {
+        "description": "Dữ liệu không hợp lệ; không có gì được ghi.\n\n- Sai cấu trúc hoặc ràng buộc từng field (thiếu field bắt buộc, sai kiểu, giờ sai định dạng, body rỗng, field lạ): `ValidationError`.\n- Vi phạm quy tắc nghiệp vụ: `ErrorDetail` với `detail` là một trong:\n  - `medication_stopped`: thuốc đã ngừng; muốn sửa lịch thì dùng lại thuốc trước (`PATCH /medications/{id}` với `stopped: false`).\n  - `medication_rule_violation`: thuốc đang `as_needed` (không có lịch).\n  - `schedule_time_conflict`: thuốc đã có một lịch đang mở khác ở giờ này.\n  - `schedule_limit_reached`: thuốc đã có 6 lịch đang mở.\n  - `last_schedule_not_removable`: đây là lịch đang mở cuối cùng; muốn bỏ hết giờ uống thì ngừng thuốc hoặc chuyển sang `as_needed` bằng `PATCH /medications/{id}`.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              ]
+            },
+            "examples": {
+              "field": {
+                "summary": "Giờ sai định dạng",
+                "value": {
+                  "detail": [
+                    {
+                      "loc": [
+                        "body",
+                        "intake_time"
+                      ],
+                      "msg": "String should match pattern '^([01]\\d|2[0-3]):[0-5]\\d$'",
+                      "type": "string_pattern_mismatch"
+                    }
+                  ]
+                }
+              },
+              "stopped": {
+                "summary": "Thuốc đã ngừng",
+                "value": {
+                  "detail": "medication_stopped"
+                }
+              },
+              "as_needed": {
+                "summary": "Thuốc dùng khi cần",
+                "value": {
+                  "detail": "medication_rule_violation"
+                }
+              },
+              "conflict": {
+                "summary": "Trùng giờ với lịch khác",
+                "value": {
+                  "detail": "schedule_time_conflict"
+                }
+              },
+              "limit": {
+                "summary": "Đã đủ 6 giờ",
+                "value": {
+                  "detail": "schedule_limit_reached"
+                }
+              },
+              "last": {
+                "summary": "Xoá lịch cuối cùng",
+                "value": {
+                  "detail": "last_schedule_not_removable"
+                }
+              }
             }
           }
         }
