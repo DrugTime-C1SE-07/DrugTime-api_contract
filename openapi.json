@@ -1,0 +1,452 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "DrugTime API Contract",
+    "version": "0.1.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.drugtime.example",
+      "description": "Production API base URL placeholder"
+    }
+  ],
+  "paths": {
+    "/admin/catalog/sync-runs": {
+      "get": {
+        "tags": ["catalog"],
+        "summary": "List catalog synchronization runs",
+        "operationId": "listCatalogSyncRuns",
+        "description": "Admin only; identity and admin permission are checked against the database on each request. Each started attempt, including retries, is a separate run. Results are ordered by started_at DESC, id DESC. Offset pagination is not a snapshot: new runs may shift subsequent pages. A completed run with isolated row errors remains thanh_cong with records_failed greater than zero. Running counts are provisional. This read operation does not create or modify runs.",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {"name": "source", "in": "query", "required": false, "schema": {"$ref": "#/components/schemas/CatalogSyncSource"}},
+          {"name": "status", "in": "query", "required": false, "schema": {"$ref": "#/components/schemas/CatalogSyncStatus"}},
+          {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20}},
+          {"name": "offset", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 0, "default": 0}}
+        ],
+        "responses": {
+          "200": {
+            "description": "Run history, including an empty items array when no runs match. Error details are nullable JSON objects, retaining compatibility with historical message-only logs. New reports contain bounded groups and samples; raw exceptions, credentials and source payloads must not be exposed.",
+            "content": {"application/json": {
+              "schema": {"$ref": "#/components/schemas/CatalogSyncRunList"},
+              "examples": {
+                "completedWithRowErrors": {"value": {
+                  "items": [{"id": 42, "source": "dav_drugbank", "started_at": "2026-10-08T02:00:00Z", "finished_at": "2026-10-08T02:00:10Z", "status": "thanh_cong", "records_inserted": 10, "records_updated": 2, "records_failed": 1, "triggered_by": "scheduler", "error_details": {"message": "Completed with row errors", "groups": [{"code": "invalid_record", "count": 1}], "samples": [{"row_number": 3, "code": "invalid_record", "source_ref": "VN-123"}], "samples_truncated": false}}],
+                  "total": 1, "limit": 20, "offset": 0
+                }},
+                "empty": {"value": {"items": [], "total": 0, "limit": 20, "offset": 0}},
+                "failed": {"value": {"items": [{"id": 43, "source": "dav_drugbank", "started_at": "2026-10-08T03:00:00Z", "finished_at": "2026-10-08T03:00:05Z", "status": "that_bai", "records_inserted": 0, "records_updated": 0, "records_failed": 0, "triggered_by": "scheduler", "error_details": {"message": "Catalog source request timed out", "code": "source_timeout"}}], "total": 1, "limit": 20, "offset": 0}}
+              }
+            }}
+          },
+          "401": {"description": "Missing, invalid or expired bearer token.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}, "example": {"detail": "Missing bearer token"}}}},
+          "403": {"description": "Authenticated user is not an Admin.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}, "example": {"detail": "Admin only"}}}},
+          "422": {"description": "Invalid query parameter for an authenticated Admin.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CatalogSyncValidationError"}, "example": {"detail": [{"type": "greater_than_equal", "loc": ["query", "limit"], "msg": "Input should be greater than or equal to 1", "input": "0", "ctx": {"ge": 1}}]}}}}
+        }
+      }
+    },
+    "/doses/batch": {
+      "post": {
+        "tags": [
+          "adherence"
+        ],
+        "summary": "Confirm dose intake in batch",
+        "description": "Confirm one or more scheduled medication doses for the authenticated patient. The endpoint supports partial success: valid items are written even when other items in the same request fail validation or authorization. Clients must use the per-item response to mark only successful local outbox items as synced. Backend must evaluate scheduled_at and taken_at at the precision received from the client, including seconds or sub-seconds, without truncating or rounding before validation, classification, idempotency checks, persistence, or response. Dose-confirmation actions must be processed within 2 seconds p95 under normal load.",
+        "operationId": "confirmDoseBatch",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DoseConfirmationBatchRequest"
+              },
+              "examples": {
+                "batch": {
+                  "summary": "Two dose confirmations",
+                  "value": [
+                    {
+                      "client_uuid": "11111111-1111-4111-8111-111111111111",
+                      "schedule_id": 12,
+                      "scheduled_at": "2026-09-30T01:00:00.000Z",
+                      "taken_at": "2026-09-30T01:05:00.000Z"
+                    },
+                    {
+                      "client_uuid": "22222222-2222-4222-8222-222222222222",
+                      "schedule_id": 13,
+                      "scheduled_at": "2026-09-30T05:00:00.000Z",
+                      "taken_at": "2026-09-30T07:00:00.001Z"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Batch processed. Inspect each item result; the HTTP status may be 200 even when one or more items failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DoseConfirmationBatchResponse"
+                },
+                "examples": {
+                  "partialSuccess": {
+                    "summary": "One item synced and one item failed because it is too late",
+                    "value": {
+                      "items": [
+                        {
+                          "client_uuid": "11111111-1111-4111-8111-111111111111",
+                          "schedule_id": 12,
+                          "scheduled_at": "2026-09-30T01:00:00.000Z",
+                          "result": "synced",
+                          "dose_log_id": 9001,
+                          "dose_status": "da_uong",
+                          "adherence_counted": true,
+                          "synced_at": "2026-09-30T01:05:08.000Z"
+                        },
+                        {
+                          "client_uuid": "22222222-2222-4222-8222-222222222222",
+                          "schedule_id": 13,
+                          "scheduled_at": "2026-09-30T05:00:00.000Z",
+                          "result": "failed",
+                          "error": {
+                            "code": "taken_at_too_late",
+                            "http_status": 422,
+                            "detail": "taken_at must not be later than scheduled_at plus 120 minutes"
+                          }
+                        }
+                      ],
+                                            "summary": {
+                                                "total": 2,
+                                                "synced": 1,
+                                                "failed": 1
+                                            }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid, or expired bearer token. No item is processed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "missingToken": {
+                    "value": {
+                      "detail": "Missing bearer token"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request body shape is invalid, for example it is not a JSON array or an item is missing client_uuid. No item is processed when the body cannot be parsed as a batch.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "invalidBody": {
+                    "value": {
+                      "detail": "Request body must be an array of dose confirmations"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "CatalogSyncSource": {"type": "string", "enum": ["dav_drugbank", "qd_5948", "duoc_thu_qg"]},
+      "CatalogSyncStatus": {"type": "string", "enum": ["dang_chay", "thanh_cong", "that_bai"]},
+      "CatalogSyncRun": {
+        "type": "object",
+        "required": ["id", "source", "started_at", "finished_at", "status", "records_inserted", "records_updated", "records_failed", "error_details", "triggered_by"],
+        "properties": {
+          "id": {"type": "integer", "format": "int64", "minimum": 1},
+          "source": {"$ref": "#/components/schemas/CatalogSyncSource"},
+          "started_at": {"type": "string", "format": "date-time", "description": "ISO 8601 timestamp with offset."},
+          "finished_at": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}], "description": "Null exactly while status is dang_chay; otherwise at or after started_at."},
+          "status": {"$ref": "#/components/schemas/CatalogSyncStatus"},
+          "records_inserted": {"type": "integer", "minimum": 0, "description": "Committed inserts; zero when the entire data transaction rolled back."},
+          "records_updated": {"type": "integer", "minimum": 0, "description": "Committed updates; zero when the entire data transaction rolled back."},
+          "records_failed": {"type": "integer", "minimum": 0, "description": "Rejected individual rows, not number of failed retry attempts."},
+          "error_details": {"anyOf": [{"type": "object", "additionalProperties": true}, {"type": "null"}], "description": "Null for a clean run. New row reports use groups (code/count), samples (one-based row_number across pages, code, nullable source_ref), and samples_truncated. At most 20 samples; source_ref is capped at 200 characters. Safe code-based messages only. Older sanitized message-only reports remain readable; legacy raw details must be sanitized before response."},
+          "triggered_by": {"type": "string", "enum": ["scheduler", "admin_thu_cong"]}
+        }
+      },
+      "CatalogSyncRunList": {
+        "type": "object",
+        "required": ["items", "total", "limit", "offset"],
+        "properties": {
+          "items": {"type": "array", "items": {"$ref": "#/components/schemas/CatalogSyncRun"}},
+          "total": {"type": "integer", "minimum": 0, "description": "Number of runs matching filters, before pagination."},
+          "limit": {"type": "integer", "minimum": 1, "maximum": 100},
+          "offset": {"type": "integer", "minimum": 0}
+        }
+      },
+      "CatalogSyncValidationError": {
+        "type": "object", "required": ["detail"],
+        "properties": {"detail": {"type": "array", "items": {
+          "type": "object", "required": ["loc", "msg", "type"],
+          "properties": {
+            "loc": {"type": "array", "items": {"anyOf": [{"type": "string"}, {"type": "integer"}]}},
+            "msg": {"type": "string"}, "type": {"type": "string"},
+            "input": {}, "ctx": {"type": "object", "additionalProperties": true}
+          }
+        }}}
+      },
+      "DoseConfirmationBatchRequest": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 50,
+        "items": {
+          "$ref": "#/components/schemas/DoseConfirmationRequestItem"
+        }
+      },
+      "DoseConfirmationRequestItem": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "client_uuid",
+          "schedule_id",
+          "scheduled_at",
+          "taken_at"
+        ],
+        "properties": {
+          "client_uuid": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Client-generated idempotency key. Re-sending the same client_uuid must not create a duplicate dose log."
+          },
+          "schedule_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "description": "Server medication_schedules.id copied into the mobile local store."
+          },
+          "scheduled_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Scheduled occurrence timestamp as ISO 8601 with offset, normally UTC from the mobile local store. Backend must use the received timestamp precision, including seconds or sub-seconds, without truncating or rounding before validation, classification, idempotency checks, persistence, or response."
+          },
+          "taken_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Actual confirmation timestamp as ISO 8601 with offset. Backend must use the received timestamp precision, including seconds or sub-seconds, without truncating or rounding before validation, classification, persistence, or response. taken_at must not be in the future. taken_at earlier than scheduled_at minus 30 minutes fails with taken_at_too_early. taken_at from scheduled_at minus 30 minutes through scheduled_at plus 30 minutes returns da_uong. taken_at later than 30 minutes and through 120 minutes after scheduled_at returns uong_tre. taken_at later than 120 minutes after scheduled_at fails with taken_at_too_late and is not persisted by task 2.10."
+          }
+        }
+      },
+      "DoseConfirmationBatchResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "summary"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "description": "One result per request item, in the same order as the request.",
+            "items": {
+              "$ref": "#/components/schemas/DoseConfirmationResultItem"
+            }
+          },
+          "summary": {
+            "$ref": "#/components/schemas/BatchSummary"
+          }
+        }
+      },
+      "DoseConfirmationResultItem": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "client_uuid",
+          "schedule_id",
+          "scheduled_at",
+          "result"
+        ],
+        "properties": {
+          "client_uuid": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "schedule_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "scheduled_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Scheduled occurrence timestamp used for the dose log, preserving received precision."
+          },
+          "result": {
+            "type": "string",
+            "enum": [
+              "synced",
+              "failed"
+            ]
+          },
+          "dose_log_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Present when result is synced."
+          },
+          "dose_status": {
+            "type": "string",
+            "enum": [
+              "da_uong",
+              "uong_tre"
+            ],
+            "description": "Present when result is synced. Values are computed using the original scheduled_at and taken_at precision. da_uong is used from scheduled_at minus 30 minutes through scheduled_at plus 30 minutes. uong_tre is used later than 30 minutes and through 120 minutes after scheduled_at. Confirmations later than 120 minutes fail with taken_at_too_late and are not persisted by task 2.10."
+          },
+          "synced_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Server sync timestamp, present when result is synced."
+          },
+          "adherence_counted": {
+            "type": "boolean",
+            "description": "Present when result is synced. Always true in task 2.10 because only da_uong and uong_tre are synced."
+          },
+          "error": {
+            "$ref": "#/components/schemas/DoseConfirmationItemError"
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "result": {
+                  "const": "synced"
+                }
+              },
+              "required": [
+                "result"
+              ]
+            },
+            "then": {
+              "required": [
+                "dose_log_id",
+                "dose_status",
+                "synced_at",
+                "adherence_counted"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "result": {
+                  "const": "failed"
+                }
+              },
+              "required": [
+                "result"
+              ]
+            },
+            "then": {
+              "required": [
+                "error"
+              ]
+            }
+          }
+        ]
+      },
+      "DoseConfirmationItemError": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "http_status",
+          "detail"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "schedule_not_found",
+              "forbidden_schedule",
+              "taken_at_in_future",
+              "taken_at_too_early",
+              "taken_at_too_late",
+              "client_uuid_conflict",
+              "invalid_item"
+            ]
+          },
+          "http_status": {
+            "type": "integer",
+            "enum": [
+              403,
+              404,
+              409,
+              422
+            ]
+          },
+          "detail": {
+            "type": "string",
+            "description": "Human-readable item error detail. Time-related errors are evaluated using the received timestamp precision without truncation or rounding. For taken_at_too_early, taken_at is earlier than scheduled_at minus 30 minutes. For taken_at_too_late, taken_at is later than scheduled_at plus 120 minutes. For schedule_not_found, the item http_status is 404. For forbidden_schedule, the item http_status is 403."
+          }
+        }
+      },
+      "BatchSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "total",
+          "synced",
+          "failed"
+        ],
+        "properties": {
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "synced": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "failed": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "detail"
+        ],
+        "properties": {
+          "detail": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
