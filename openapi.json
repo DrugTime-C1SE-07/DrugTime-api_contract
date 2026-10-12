@@ -1706,8 +1706,8 @@
           "link"
         ],
         "operationId": "revokeLink",
-        "summary": "Bệnh nhân gỡ liên kết với người thân",
-        "description": "Bệnh nhân thu hồi quyền liên kết với một người thân (`caregiver_links`). Bản ghi không bị xoá khỏi cơ sở dữ liệu để bảo toàn lịch sử; trạng thái đổi thành `revoked`, `revoked_at` được gán thời điểm hiện tại và `sharing_enabled` thành `false`.\n\nChỉ chính bệnh nhân (`patient_user_id`) của liên kết mới có quyền gọi. Nếu liên kết không tồn tại hoặc không thuộc quyền sở hữu của người gọi, trả về 403 `khong_co_quyen`.\n\nThao tác có tính idempotent: nếu liên kết đã bị thu hồi (`revoked`) trước đó, trả về 204 và không thay đổi trạng thái hay thời điểm `revoked_at`.\n\nLưu ý: Hợp đồng này là BẢN NHÁP đang chờ Tech Lead phê duyệt.",
+        "summary": "Thu hồi hoặc tự rời liên kết người thân",
+        "description": "Thu hồi quyền liên kết người thân (`caregiver_links`). Bản ghi không bị xoá khỏi cơ sở dữ liệu để bảo toàn lịch sử; trạng thái đổi thành `revoked`, `revoked_at` được gán thời điểm hiện tại và `sharing_enabled` thành `false`.\n\nQuyền gọi: Bệnh nhân sở hữu liên kết (`patient_user_id`) có thể thu hồi liên kết; người thân tham gia liên kết (`family_user_id`) có thể tự rời khỏi liên kết của chính mình. Nếu liên kết không tồn tại hoặc người gọi không thuộc liên kết đó, trả về 403 `khong_co_quyen`.\n\nThao tác có tính idempotent: nếu liên kết đã bị thu hồi (`revoked`) trước đó, trả về 204 và không thay đổi trạng thái hay thời điểm `revoked_at`.\n\nHợp đồng đã được Tech Lead phê duyệt theo quyết định nghiệp vụ SCRUM-134 (Sprint 3 Backlog 3.26, QD-30/PB17).",
         "security": [
           {
             "bearerAuth": []
