@@ -21,6 +21,10 @@
     {
       "name": "consent",
       "description": "Đồng ý xử lý dữ liệu theo từng mục đích (PDPL 2025) của chính người gọi."
+    },
+    {
+      "name": "link",
+      "description": "Liên kết và chia sẻ dữ liệu giữa người bệnh và người thân."
     }
   ],
   "paths": {
@@ -1679,6 +1683,45 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/links/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "Id của liên kết người thân (`caregiver_links.id`).",
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          }
+        }
+      ],
+      "delete": {
+        "tags": [
+          "link"
+        ],
+        "operationId": "revokeLink",
+        "summary": "Bệnh nhân gỡ liên kết với người thân",
+        "description": "Bệnh nhân thu hồi quyền liên kết với một người thân (`caregiver_links`). Bản ghi không bị xoá khỏi cơ sở dữ liệu để bảo toàn lịch sử; trạng thái đổi thành `revoked`, `revoked_at` được gán thời điểm hiện tại và `sharing_enabled` thành `false`.\n\nChỉ chính bệnh nhân (`patient_user_id`) của liên kết mới có quyền gọi. Nếu liên kết không tồn tại hoặc không thuộc quyền sở hữu của người gọi, trả về 403 `khong_co_quyen`.\n\nThao tác có tính idempotent: nếu liên kết đã bị thu hồi (`revoked`) trước đó, trả về 204 và không thay đổi trạng thái hay thời điểm `revoked_at`.\n\nLưu ý: Hợp đồng này là BẢN NHÁP đang chờ Tech Lead phê duyệt.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Thu hồi liên kết thành công hoặc liên kết đã ở trạng thái thu hồi từ trước. Không có body."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
           }
         }
       }
