@@ -3,7 +3,7 @@
   "info": {
     "title": "DrugTime API",
     "version": "0.1.0",
-    "description": "Hợp đồng API giữa Backend API và các client (Mobile App, Admin Web).\n\nQuy ước chung:\n- Xác thực bằng header `Authorization: Bearer <token>`, trong đó token là **app session token** do `/auth` cấp (`session.access_token`). Token do Supabase Auth cấp không được chấp nhận làm bearer (401). Phiên `mobile` sống 10 ngày, không có refresh: hết hạn thì đăng nhập lại. Phiên `admin_web` hết hạn sau 20 phút kể từ lần cấp gần nhất; gia hạn bằng `POST /auth/admin/session/refresh`.\n- Thời điểm dùng RFC 3339 / ISO 8601 có offset. Giờ uống (`HH:MM`) là giờ địa phương Asia/Ho_Chi_Minh.\n- Lỗi có body `{\"detail\": ...}`. Với 403, 404, 429, 503 và lỗi quy tắc nghiệp vụ 422, `detail` là một chuỗi mã ổn định (snake_case) để client so khớp. Với lỗi sai cấu trúc request 422, `detail` là mảng lỗi theo từng field (định dạng mặc định của FastAPI). Với 401, `detail` là câu mô tả, client không so khớp nội dung.\n- Endpoint chạm dữ liệu sức khỏe kiểm quyền và consent ở mỗi request; truy cập bị từ chối trả 403 và được ghi vào nhật ký truy cập.\n- Endpoint trả danh sách bọc trong object `{\"items\": [...]}` để sau này thêm phân trang hoặc metadata mà không phá vỡ client.\n- Endpoint có phân trang dùng **con trỏ**: query `limit` (số phần tử tối đa của trang) và `cursor` (bỏ trống ở trang đầu); response có `next_cursor`, là `null` ở trang cuối. Muốn tải trang kế thì gửi lại đúng `next_cursor` nhận được. Con trỏ là chuỗi mờ: client không đọc, không tự tạo hay sửa. Con trỏ hỏng hoặc không thuộc endpoint/tham số này trả 422 `invalid_cursor`. Phần tử đã trả ở trang trước không lặp lại ở trang sau.\n- Giai đoạn 1 admin **không** đọc hay ghi dữ liệu sức khỏe của người bệnh (QD-32): mọi endpoint dữ liệu sức khỏe trả 403 `khong_co_quyen` cho admin và ghi nhật ký `denied`."
+    "description": "Hợp đồng API giữa Backend API và các client (Mobile App, Admin Web).\n\nQuy ước chung:\n- Xác thực bằng header `Authorization: Bearer <token>`, trong đó token là **app session token** do `/auth` cấp (`session.access_token`). Token do Supabase Auth cấp không được chấp nhận làm bearer (401). Phiên `mobile` sống 10 ngày, không có refresh: hết hạn thì đăng nhập lại. Phiên `admin_web` hết hạn sau 20 phút kể từ lần cấp gần nhất; gia hạn bằng `POST /auth/admin/session/refresh`.\n- Thời điểm dùng RFC 3339 / ISO 8601 có offset. Giờ uống (`HH:MM`) là giờ địa phương Asia/Ho_Chi_Minh.\n- Lỗi có body `{\"detail\": ...}`. Với 403, 404, 409, 429, 503 và lỗi quy tắc nghiệp vụ 422, `detail` là một chuỗi mã ổn định (snake_case) để client so khớp. Với lỗi sai cấu trúc request 422, `detail` là mảng lỗi theo từng field (định dạng mặc định của FastAPI). Với 401, `detail` là câu mô tả, client không so khớp nội dung.\n- Endpoint chạm dữ liệu sức khỏe kiểm quyền và consent ở mỗi request; truy cập bị từ chối trả 403 và được ghi vào nhật ký truy cập.\n- Endpoint trả danh sách bọc trong object `{\"items\": [...]}` để sau này thêm phân trang hoặc metadata mà không phá vỡ client.\n- Endpoint có phân trang dùng **con trỏ**: query `limit` (số phần tử tối đa của trang) và `cursor` (bỏ trống ở trang đầu); response có `next_cursor`, là `null` ở trang cuối. Muốn tải trang kế thì gửi lại đúng `next_cursor` nhận được. Con trỏ là chuỗi mờ: client không đọc, không tự tạo hay sửa. Con trỏ hỏng hoặc không thuộc endpoint/tham số này trả 422 `invalid_cursor`. Phần tử đã trả ở trang trước không lặp lại ở trang sau.\n- Giai đoạn 1 admin **không** đọc hay ghi dữ liệu sức khỏe của người bệnh (QD-32): mọi endpoint dữ liệu sức khỏe trả 403 `khong_co_quyen` cho admin và ghi nhật ký `denied`.\n- Ngoại lệ phân trang cho **danh sách admin** (`/admin/...`): dùng `skip` (số phần tử bỏ qua, mặc định 0) và `limit`; response có `items` và `total` (tổng số phần tử khớp bộ lọc, không tính phân trang), để bảng quản trị hiện số trang. Thứ tự sắp xếp của mỗi endpoint được ghi trong endpoint đó.\n- Endpoint `/admin/...` chỉ dành cho tài khoản admin (QD-44): thiếu hoặc sai token trả 401; tài khoản không phải admin trả 403 `admin_only`. Danh mục quy tắc tương tác không phải dữ liệu sức khỏe của người bệnh nên không ghi nhật ký truy cập."
   },
   "tags": [
     {
@@ -21,6 +21,10 @@
     {
       "name": "consent",
       "description": "Đồng ý xử lý dữ liệu theo từng mục đích (PDPL 2025) của chính người gọi."
+    },
+    {
+      "name": "interaction",
+      "description": "Danh mục quy tắc tương tác thuốc-thuốc và thuốc-thực phẩm (admin), có phiên bản."
     }
   ],
   "paths": {
@@ -2509,6 +2513,1515 @@
           }
         }
       }
+    },
+    "/admin/drug-interactions": {
+      "post": {
+        "tags": [
+          "interaction"
+        ],
+        "operationId": "createDrugInteraction",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Admin: thêm quy tắc tương tác giữa hai hoạt chất",
+        "description": "Tạo quy tắc mới ở phiên bản 1, có hiệu lực ngay (không có bước duyệt). Thứ tự kiểm: body sai cấu trúc (422 `ValidationError`) → hoạt chất A/B không tồn tại (422 `active_ingredient_not_found`) → quy tắc nghiệp vụ (422) → trùng cặp (409 `interaction_rule_exists`).\n\n**Phiên bản.** Quy tắc có mã `id` không đổi; mỗi lần sửa có thay đổi tạo một **phiên bản mới** (`version` + 1, `version_id` mới) và đóng phiên bản cũ (`state = superseded`). Nội dung phiên bản đã tạo không bao giờ đổi. Các request ghi trên cùng một quy tắc được xử lý lần lượt.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DrugInteractionCreate"
+              },
+              "examples": {
+                "contraindication": {
+                  "summary": "Chống chỉ định giữa hai hoạt chất",
+                  "value": {
+                    "ingredient_a_id": 12,
+                    "ingredient_b_id": 34,
+                    "interaction_type": "chong_chi_dinh",
+                    "severity_level": 4,
+                    "handling_type": "tranh_phoi_hop",
+                    "description": "Tăng nguy cơ xuất huyết nghiêm trọng. Tránh phối hợp.",
+                    "source": "QĐ 5948/QĐ-BYT"
+                  }
+                },
+                "dose_dependent": {
+                  "summary": "Phụ thuộc liều, có ngưỡng",
+                  "value": {
+                    "ingredient_a_id": 12,
+                    "ingredient_b_id": 34,
+                    "interaction_type": "phu_thuoc_lieu",
+                    "severity_level": 3,
+                    "handling_type": "can_theo_doi",
+                    "description": "Tăng nguy cơ chảy máu, cần theo dõi.",
+                    "source": "QĐ 5948/QĐ-BYT",
+                    "dose_thresholds": [
+                      {
+                        "ingredient_ref": "B",
+                        "min_dose": 0,
+                        "max_dose": 100,
+                        "dose_unit": "mg/ngày",
+                        "severity_level": 2,
+                        "warning_text": "Theo dõi dấu hiệu chảy máu."
+                      },
+                      {
+                        "ingredient_ref": "B",
+                        "min_dose": 300,
+                        "dose_unit": "mg/ngày",
+                        "severity_level": 4,
+                        "warning_text": "Không phối hợp ở liều này."
+                      }
+                    ]
+                  }
+                },
+                "spacing": {
+                  "summary": "Uống cách giờ",
+                  "value": {
+                    "ingredient_a_id": 77,
+                    "ingredient_b_id": 78,
+                    "interaction_type": "phu_thuoc_lieu",
+                    "severity_level": 2,
+                    "handling_type": "cach_gio",
+                    "min_interval_hours": 2,
+                    "description": "Giảm hấp thu; nên uống cách nhau.",
+                    "source": "Dược thư Quốc gia Việt Nam 2022"
+                  }
+                },
+                "external": {
+                  "summary": "B ngoài danh mục",
+                  "value": {
+                    "ingredient_a_id": 12,
+                    "ingredient_b_external_name": "Rượu (ethanol)",
+                    "interaction_type": "phu_thuoc_lieu",
+                    "severity_level": 3,
+                    "handling_type": "can_theo_doi",
+                    "description": "Rượu làm thay đổi tác dụng chống đông.",
+                    "source": "Dược thư Quốc gia Việt Nam 2022"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Quy tắc vừa tạo (phiên bản 1).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrugInteraction"
+                },
+                "examples": {
+                  "created": {
+                    "value": {
+                      "id": 501,
+                      "version": 1,
+                      "version_id": 501,
+                      "state": "current",
+                      "ingredient_a": {
+                        "id": 12,
+                        "standard_name": "Warfarin"
+                      },
+                      "ingredient_b": {
+                        "id": 34,
+                        "standard_name": "Aspirin"
+                      },
+                      "ingredient_b_external_name": null,
+                      "interaction_type": "chong_chi_dinh",
+                      "severity_level": 4,
+                      "handling_type": "tranh_phoi_hop",
+                      "min_interval_hours": null,
+                      "description": "Tăng nguy cơ xuất huyết nghiêm trọng. Tránh phối hợp.",
+                      "source": "QĐ 5948/QĐ-BYT",
+                      "verification_status": "da_xac_minh",
+                      "dose_thresholds": [],
+                      "created_at": "2026-10-05T09:12:44+07:00",
+                      "updated_at": "2026-10-05T09:12:44+07:00",
+                      "updated_by": {
+                        "id": "6f1c2b8e-3d4a-4c1e-9b0a-2f7e5d9c1a33",
+                        "email": "admin@drugtime.vn"
+                      },
+                      "superseded_at": null,
+                      "deleted_at": null,
+                      "deleted_by": null
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/AdminForbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/InteractionRuleConflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/InteractionUnprocessable"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "interaction"
+        ],
+        "operationId": "listDrugInteractions",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Admin: danh sách quy tắc tương tác giữa hai hoạt chất",
+        "description": "Chỉ trả phiên bản hiện hành của quy tắc chưa xóa. Các bộ lọc kết hợp bằng AND. Sắp theo `updated_at` giảm dần, rồi `id` giảm dần. `total` đếm theo quy tắc.",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "description": "Từ khóa, không phân biệt hoa thường; khớp một phần tên chuẩn của hoạt chất A hoặc B, hoặc tên chất ngoài danh mục."
+          },
+          {
+            "name": "ingredient_id",
+            "in": "query",
+            "required": false,
+            "description": "Chỉ quy tắc chạm hoạt chất này.",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "medication_id",
+            "in": "query",
+            "required": false,
+            "description": "Id thuốc trong danh mục (`medications`). Chỉ quy tắc chạm **bất kỳ** hoạt chất nào của thuốc này (theo bảng thuốc–hoạt chất). Thuốc không tồn tại hoặc chưa có hoạt chất → danh sách rỗng, không lỗi.",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "interaction_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/InteractionType"
+            }
+          },
+          {
+            "name": "severity_level",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/InteractionSeverity"
+            }
+          },
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "description": "Số phần tử bỏ qua.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Số phần tử tối đa của trang.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Một trang quy tắc.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrugInteractionPage"
+                },
+                "examples": {
+                  "page": {
+                    "value": {
+                      "items": [
+                        {
+                          "id": 502,
+                          "version": 1,
+                          "version_id": 878,
+                          "state": "current",
+                          "ingredient_a": {
+                            "id": 12,
+                            "standard_name": "Warfarin"
+                          },
+                          "ingredient_b": null,
+                          "ingredient_b_external_name": "Rượu (ethanol)",
+                          "interaction_type": "phu_thuoc_lieu",
+                          "severity_level": 3,
+                          "handling_type": "can_theo_doi",
+                          "min_interval_hours": null,
+                          "description": "Rượu làm thay đổi tác dụng chống đông.",
+                          "source": "QĐ 5948/QĐ-BYT",
+                          "verification_status": "da_xac_minh",
+                          "dose_thresholds": [],
+                          "created_at": "2026-10-11T14:03:10+07:00",
+                          "updated_at": "2026-10-11T14:03:10+07:00",
+                          "updated_by": {
+                            "id": "6f1c2b8e-3d4a-4c1e-9b0a-2f7e5d9c1a33",
+                            "email": "admin@drugtime.vn"
+                          },
+                          "superseded_at": null,
+                          "deleted_at": null,
+                          "deleted_by": null
+                        },
+                        {
+                          "id": 501,
+                          "version": 2,
+                          "version_id": 877,
+                          "state": "current",
+                          "ingredient_a": {
+                            "id": 12,
+                            "standard_name": "Warfarin"
+                          },
+                          "ingredient_b": {
+                            "id": 34,
+                            "standard_name": "Aspirin"
+                          },
+                          "ingredient_b_external_name": null,
+                          "interaction_type": "chong_chi_dinh",
+                          "severity_level": 4,
+                          "handling_type": "tranh_phoi_hop",
+                          "min_interval_hours": null,
+                          "description": "Tăng nguy cơ xuất huyết nghiêm trọng. Tránh phối hợp.",
+                          "source": "QĐ 5948/QĐ-BYT",
+                          "verification_status": "da_xac_minh",
+                          "dose_thresholds": [],
+                          "created_at": "2026-10-05T09:12:44+07:00",
+                          "updated_at": "2026-10-11T14:03:10+07:00",
+                          "updated_by": {
+                            "id": "6f1c2b8e-3d4a-4c1e-9b0a-2f7e5d9c1a33",
+                            "email": "admin@drugtime.vn"
+                          },
+                          "superseded_at": null,
+                          "deleted_at": null,
+                          "deleted_by": null
+                        }
+                      ],
+                      "total": 2
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/AdminForbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/AdminQueryUnprocessable"
+          }
+        }
+      }
+    },
+    "/admin/drug-interactions/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "Mã quy tắc.",
+          "schema": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "interaction"
+        ],
+        "operationId": "getDrugInteraction",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Admin: chi tiết quy tắc (phiên bản hiện hành)",
+        "responses": {
+          "200": {
+            "description": "Phiên bản hiện hành.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrugInteraction"
+                },
+                "examples": {
+                  "current": {
+                    "value": {
+                      "id": 501,
+                      "version": 2,
+                      "version_id": 877,
+                      "state": "current",
+                      "ingredient_a": {
+                        "id": 12,
+                        "standard_name": "Warfarin"
+                      },
+                      "ingredient_b": {
+                        "id": 34,
+                        "standard_name": "Aspirin"
+                      },
+                      "ingredient_b_external_name": null,
+                      "interaction_type": "chong_chi_dinh",
+                      "severity_level": 4,
+                      "handling_type": "tranh_phoi_hop",
+                      "min_interval_hours": null,
+                      "description": "Tăng nguy cơ xuất huyết nghiêm trọng. Tránh phối hợp.",
+                      "source": "QĐ 5948/QĐ-BYT",
+                      "verification_status": "da_xac_minh",
+                      "dose_thresholds": [],
+                      "created_at": "2026-10-05T09:12:44+07:00",
+                      "updated_at": "2026-10-11T14:03:10+07:00",
+                      "updated_by": {
+                        "id": "6f1c2b8e-3d4a-4c1e-9b0a-2f7e5d9c1a33",
+                        "email": "admin@drugtime.vn"
+                      },
+                      "superseded_at": null,
+                      "deleted_at": null,
+                      "deleted_by": null
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/AdminForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/InteractionRuleNotFound"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "interaction"
+        ],
+        "operationId": "updateDrugInteraction",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Admin: sửa quy tắc (tạo phiên bản mới)",
+        "description": "Thứ tự kiểm: body sai cấu trúc (422 `ValidationError`) → quy tắc không tồn tại hoặc đã xóa (404) → `expected_version` khác phiên bản hiện hành (409 `version_conflict`) → quy tắc nghiệp vụ trên kết quả sau khi sửa (422).\n\n| Gửi | Kết quả |\n|---|---|\n| Mọi field gửi đều giống phiên bản hiện hành (kể cả `dose_thresholds` giống hệt) | 200, không tạo phiên bản mới |\n| Có ít nhất một field khác | 200, phiên bản mới (`version` + 1); field không gửi lấy của phiên bản hiện hành; ngưỡng sao chép (id mới) nếu không gửi `dose_thresholds` |\n\n`updated_by` là admin gọi request. **Phiên bản.** Quy tắc có mã `id` không đổi; mỗi lần sửa có thay đổi tạo một **phiên bản mới** (`version` + 1, `version_id` mới) và đóng phiên bản cũ (`state = superseded`). Nội dung phiên bản đã tạo không bao giờ đổi. Các request ghi trên cùng một quy tắc được xử lý lần lượt.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DrugInteractionUpdate"
+              },
+              "examples": {
+                "severity": {
+                  "summary": "Đổi mức độ và mô tả",
+                  "value": {
+                    "expected_version": 1,
+                    "severity_level": 4,
+                    "interaction_type": "chong_chi_dinh",
+                    "handling_type": "tranh_phoi_hop",
+                    "dose_thresholds": [],
+                    "description": "Tăng nguy cơ xuất huyết nghiêm trọng. Tránh phối hợp."
+                  }
+                },
+                "clear_interval": {
+                  "summary": "Bỏ cách giờ",
+                  "value": {
+                    "expected_version": 3,
+                    "handling_type": "can_theo_doi",
+                    "min_interval_hours": null
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Phiên bản hiện hành sau khi sửa.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrugInteraction"
+                },
+                "examples": {
+                  "updated": {
+                    "value": {
+                      "id": 501,
+                      "version": 2,
+                      "version_id": 877,
+                      "state": "current",
+                      "ingredient_a": {
+                        "id": 12,
+                        "standard_name": "Warfarin"
+                      },
+                      "ingredient_b": {
+                        "id": 34,
+                        "standard_name": "Aspirin"
+                      },
+                      "ingredient_b_external_name": null,
+                      "interaction_type": "chong_chi_dinh",
+                      "severity_level": 4,
+                      "handling_type": "tranh_phoi_hop",
+                      "min_interval_hours": null,
+                      "description": "Tăng nguy cơ xuất huyết nghiêm trọng. Tránh phối hợp.",
+                      "source": "QĐ 5948/QĐ-BYT",
+                      "verification_status": "da_xac_minh",
+                      "dose_thresholds": [],
+                      "created_at": "2026-10-05T09:12:44+07:00",
+                      "updated_at": "2026-10-11T14:03:10+07:00",
+                      "updated_by": {
+                        "id": "6f1c2b8e-3d4a-4c1e-9b0a-2f7e5d9c1a33",
+                        "email": "admin@drugtime.vn"
+                      },
+                      "superseded_at": null,
+                      "deleted_at": null,
+                      "deleted_by": null
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/AdminForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/InteractionRuleNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/InteractionRuleConflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/InteractionUnprocessable"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "interaction"
+        ],
+        "operationId": "deleteDrugInteraction",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Admin: xóa mềm quy tắc",
+        "description": "Đánh dấu phiên bản hiện hành `deleted` (kèm `deleted_at`, `deleted_by`); không xóa dòng nào. Quy tắc biến mất khỏi danh sách và chi tiết (404), lịch sử vẫn xem được. Tạo lại cùng cặp sau đó là quy tắc mới (mã mới). Thứ tự kiểm: không tồn tại hoặc đã xóa (404) → `expected_version` (409).",
+        "parameters": [
+          {
+            "name": "expected_version",
+            "in": "query",
+            "required": true,
+            "description": "Số phiên bản admin đang xem. Khác phiên bản hiện hành → 409 `version_conflict`.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Đã xóa mềm."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/AdminForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/InteractionRuleNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/InteractionRuleConflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/AdminQueryUnprocessable"
+          }
+        }
+      }
+    },
+    "/admin/drug-interactions/{id}/versions": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "Mã quy tắc.",
+          "schema": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "interaction"
+        ],
+        "operationId": "listDrugInteractionVersions",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Admin: lịch sử phiên bản của quy tắc",
+        "description": "Mọi phiên bản, mới nhất trước, kể cả khi quy tắc đã xóa mềm.",
+        "responses": {
+          "200": {
+            "description": "Lịch sử.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrugInteractionVersionList"
+                },
+                "examples": {
+                  "history": {
+                    "value": {
+                      "items": [
+                        {
+                          "id": 501,
+                          "version": 2,
+                          "version_id": 877,
+                          "state": "current",
+                          "ingredient_a": {
+                            "id": 12,
+                            "standard_name": "Warfarin"
+                          },
+                          "ingredient_b": {
+                            "id": 34,
+                            "standard_name": "Aspirin"
+                          },
+                          "ingredient_b_external_name": null,
+                          "interaction_type": "chong_chi_dinh",
+                          "severity_level": 4,
+                          "handling_type": "tranh_phoi_hop",
+                          "min_interval_hours": null,
+                          "description": "Tăng nguy cơ xuất huyết nghiêm trọng. Tránh phối hợp.",
+                          "source": "QĐ 5948/QĐ-BYT",
+                          "verification_status": "da_xac_minh",
+                          "dose_thresholds": [],
+                          "created_at": "2026-10-05T09:12:44+07:00",
+                          "updated_at": "2026-10-11T14:03:10+07:00",
+                          "updated_by": {
+                            "id": "6f1c2b8e-3d4a-4c1e-9b0a-2f7e5d9c1a33",
+                            "email": "admin@drugtime.vn"
+                          },
+                          "superseded_at": null,
+                          "deleted_at": null,
+                          "deleted_by": null
+                        },
+                        {
+                          "id": 501,
+                          "version": 1,
+                          "version_id": 501,
+                          "state": "superseded",
+                          "ingredient_a": {
+                            "id": 12,
+                            "standard_name": "Warfarin"
+                          },
+                          "ingredient_b": {
+                            "id": 34,
+                            "standard_name": "Aspirin"
+                          },
+                          "ingredient_b_external_name": null,
+                          "interaction_type": "phu_thuoc_lieu",
+                          "severity_level": 3,
+                          "handling_type": "can_theo_doi",
+                          "min_interval_hours": null,
+                          "description": "Tăng nguy cơ chảy máu, cần theo dõi.",
+                          "source": "QĐ 5948/QĐ-BYT",
+                          "verification_status": "da_xac_minh",
+                          "dose_thresholds": [
+                            {
+                              "id": 90,
+                              "ingredient_ref": "B",
+                              "min_dose": 0,
+                              "max_dose": 100,
+                              "dose_unit": "mg/ngày",
+                              "severity_level": 2,
+                              "warning_text": "Theo dõi dấu hiệu chảy máu."
+                            },
+                            {
+                              "id": 91,
+                              "ingredient_ref": "B",
+                              "min_dose": 300,
+                              "max_dose": null,
+                              "dose_unit": "mg/ngày",
+                              "severity_level": 4,
+                              "warning_text": "Không phối hợp ở liều này."
+                            }
+                          ],
+                          "created_at": "2026-10-05T09:12:44+07:00",
+                          "updated_at": "2026-10-05T09:12:44+07:00",
+                          "updated_by": {
+                            "id": "6f1c2b8e-3d4a-4c1e-9b0a-2f7e5d9c1a33",
+                            "email": "admin@drugtime.vn"
+                          },
+                          "superseded_at": "2026-10-11T14:03:10+07:00",
+                          "deleted_at": null,
+                          "deleted_by": null
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/AdminForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/InteractionRuleHistoryNotFound"
+          }
+        }
+      }
+    },
+    "/admin/drug-interaction-versions/{version_id}": {
+      "parameters": [
+        {
+          "name": "version_id",
+          "in": "path",
+          "required": true,
+          "description": "Id phiên bản (ví dụ id được lưu trong một cảnh báo cũ).",
+          "schema": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "interaction"
+        ],
+        "operationId": "getDrugInteractionVersion",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Admin: xem một phiên bản theo id phiên bản",
+        "responses": {
+          "200": {
+            "description": "Phiên bản.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrugInteraction"
+                },
+                "examples": {
+                  "old": {
+                    "value": {
+                      "id": 501,
+                      "version": 1,
+                      "version_id": 501,
+                      "state": "superseded",
+                      "ingredient_a": {
+                        "id": 12,
+                        "standard_name": "Warfarin"
+                      },
+                      "ingredient_b": {
+                        "id": 34,
+                        "standard_name": "Aspirin"
+                      },
+                      "ingredient_b_external_name": null,
+                      "interaction_type": "phu_thuoc_lieu",
+                      "severity_level": 3,
+                      "handling_type": "can_theo_doi",
+                      "min_interval_hours": null,
+                      "description": "Tăng nguy cơ chảy máu, cần theo dõi.",
+                      "source": "QĐ 5948/QĐ-BYT",
+                      "verification_status": "da_xac_minh",
+                      "dose_thresholds": [
+                        {
+                          "id": 90,
+                          "ingredient_ref": "B",
+                          "min_dose": 0,
+                          "max_dose": 100,
+                          "dose_unit": "mg/ngày",
+                          "severity_level": 2,
+                          "warning_text": "Theo dõi dấu hiệu chảy máu."
+                        },
+                        {
+                          "id": 91,
+                          "ingredient_ref": "B",
+                          "min_dose": 300,
+                          "max_dose": null,
+                          "dose_unit": "mg/ngày",
+                          "severity_level": 4,
+                          "warning_text": "Không phối hợp ở liều này."
+                        }
+                      ],
+                      "created_at": "2026-10-05T09:12:44+07:00",
+                      "updated_at": "2026-10-05T09:12:44+07:00",
+                      "updated_by": {
+                        "id": "6f1c2b8e-3d4a-4c1e-9b0a-2f7e5d9c1a33",
+                        "email": "admin@drugtime.vn"
+                      },
+                      "superseded_at": "2026-10-11T14:03:10+07:00",
+                      "deleted_at": null,
+                      "deleted_by": null
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/AdminForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/InteractionVersionNotFound"
+          }
+        }
+      }
+    },
+    "/admin/drug-food-interactions": {
+      "post": {
+        "tags": [
+          "interaction"
+        ],
+        "operationId": "createDrugFoodInteraction",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Admin: thêm quy tắc tương tác hoạt chất–thực phẩm",
+        "description": "Tạo quy tắc mới ở phiên bản 1, có hiệu lực ngay. Thứ tự kiểm: body sai cấu trúc (422) → hoạt chất không tồn tại (422 `active_ingredient_not_found`) → trùng cặp (409 `interaction_rule_exists`).\n\n**Phiên bản.** Quy tắc có mã `id` không đổi; mỗi lần sửa có thay đổi tạo một **phiên bản mới** (`version` + 1, `version_id` mới) và đóng phiên bản cũ (`state = superseded`). Nội dung phiên bản đã tạo không bao giờ đổi. Các request ghi trên cùng một quy tắc được xử lý lần lượt.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DrugFoodInteractionCreate"
+              },
+              "examples": {
+                "grapefruit": {
+                  "value": {
+                    "ingredient_id": 56,
+                    "food_to_avoid": "Nước bưởi chùm",
+                    "severity_level": 3,
+                    "reason": "Tăng nồng độ simvastatin trong máu; tránh uống nước bưởi chùm.",
+                    "source": "Dược thư Quốc gia Việt Nam 2022"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Quy tắc vừa tạo.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrugFoodInteraction"
+                },
+                "examples": {
+                  "created": {
+                    "value": {
+                      "id": 301,
+                      "version": 1,
+                      "version_id": 301,
+                      "state": "current",
+                      "ingredient": {
+                        "id": 56,
+                        "standard_name": "Simvastatin"
+                      },
+                      "food_to_avoid": "Nước bưởi chùm",
+                      "severity_level": 3,
+                      "reason": "Tăng nồng độ simvastatin trong máu; tránh uống nước bưởi chùm.",
+                      "source": "Dược thư Quốc gia Việt Nam 2022",
+                      "verification_status": "da_xac_minh",
+                      "created_at": "2026-10-05T09:12:44+07:00",
+                      "updated_at": "2026-10-05T09:12:44+07:00",
+                      "updated_by": {
+                        "id": "6f1c2b8e-3d4a-4c1e-9b0a-2f7e5d9c1a33",
+                        "email": "admin@drugtime.vn"
+                      },
+                      "superseded_at": null,
+                      "deleted_at": null,
+                      "deleted_by": null
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/AdminForbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/InteractionRuleConflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/FoodInteractionUnprocessable"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "interaction"
+        ],
+        "operationId": "listDrugFoodInteractions",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Admin: danh sách quy tắc tương tác hoạt chất–thực phẩm",
+        "description": "Chỉ trả phiên bản hiện hành của quy tắc chưa xóa. Bộ lọc kết hợp bằng AND. Sắp theo `updated_at` giảm dần, rồi `id` giảm dần.",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "description": "Từ khóa, không phân biệt hoa thường; khớp một phần tên chuẩn của hoạt chất hoặc `food_to_avoid`."
+          },
+          {
+            "name": "ingredient_id",
+            "in": "query",
+            "required": false,
+            "description": "Chỉ quy tắc chạm hoạt chất này.",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "medication_id",
+            "in": "query",
+            "required": false,
+            "description": "Id thuốc trong danh mục (`medications`). Chỉ quy tắc chạm **bất kỳ** hoạt chất nào của thuốc này (theo bảng thuốc–hoạt chất). Thuốc không tồn tại hoặc chưa có hoạt chất → danh sách rỗng, không lỗi.",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "severity_level",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/InteractionSeverity"
+            }
+          },
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "description": "Số phần tử bỏ qua.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Số phần tử tối đa của trang.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Một trang quy tắc.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrugFoodInteractionPage"
+                },
+                "examples": {
+                  "page": {
+                    "value": {
+                      "items": [
+                        {
+                          "id": 301,
+                          "version": 1,
+                          "version_id": 301,
+                          "state": "current",
+                          "ingredient": {
+                            "id": 56,
+                            "standard_name": "Simvastatin"
+                          },
+                          "food_to_avoid": "Nước bưởi chùm",
+                          "severity_level": 3,
+                          "reason": "Tăng nồng độ simvastatin trong máu; tránh uống nước bưởi chùm.",
+                          "source": "Dược thư Quốc gia Việt Nam 2022",
+                          "verification_status": "da_xac_minh",
+                          "created_at": "2026-10-05T09:12:44+07:00",
+                          "updated_at": "2026-10-05T09:12:44+07:00",
+                          "updated_by": {
+                            "id": "6f1c2b8e-3d4a-4c1e-9b0a-2f7e5d9c1a33",
+                            "email": "admin@drugtime.vn"
+                          },
+                          "superseded_at": null,
+                          "deleted_at": null,
+                          "deleted_by": null
+                        }
+                      ],
+                      "total": 1
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/AdminForbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/AdminQueryUnprocessable"
+          }
+        }
+      }
+    },
+    "/admin/drug-food-interactions/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "Mã quy tắc.",
+          "schema": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "interaction"
+        ],
+        "operationId": "getDrugFoodInteraction",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Admin: chi tiết quy tắc hoạt chất–thực phẩm",
+        "responses": {
+          "200": {
+            "description": "Phiên bản hiện hành.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrugFoodInteraction"
+                },
+                "examples": {
+                  "current": {
+                    "value": {
+                      "id": 301,
+                      "version": 1,
+                      "version_id": 301,
+                      "state": "current",
+                      "ingredient": {
+                        "id": 56,
+                        "standard_name": "Simvastatin"
+                      },
+                      "food_to_avoid": "Nước bưởi chùm",
+                      "severity_level": 3,
+                      "reason": "Tăng nồng độ simvastatin trong máu; tránh uống nước bưởi chùm.",
+                      "source": "Dược thư Quốc gia Việt Nam 2022",
+                      "verification_status": "da_xac_minh",
+                      "created_at": "2026-10-05T09:12:44+07:00",
+                      "updated_at": "2026-10-05T09:12:44+07:00",
+                      "updated_by": {
+                        "id": "6f1c2b8e-3d4a-4c1e-9b0a-2f7e5d9c1a33",
+                        "email": "admin@drugtime.vn"
+                      },
+                      "superseded_at": null,
+                      "deleted_at": null,
+                      "deleted_by": null
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/AdminForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/InteractionRuleNotFound"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "interaction"
+        ],
+        "operationId": "updateDrugFoodInteraction",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Admin: sửa quy tắc hoạt chất–thực phẩm (tạo phiên bản mới)",
+        "description": "Như `PATCH /admin/drug-interactions/{id}`: 404 → 409 `version_conflict` → 409 `interaction_rule_exists` (đổi `food_to_avoid` trùng quy tắc khác của cùng hoạt chất). Giống hệt hiện tại thì không tạo phiên bản.\n\n**Phiên bản.** Quy tắc có mã `id` không đổi; mỗi lần sửa có thay đổi tạo một **phiên bản mới** (`version` + 1, `version_id` mới) và đóng phiên bản cũ (`state = superseded`). Nội dung phiên bản đã tạo không bao giờ đổi. Các request ghi trên cùng một quy tắc được xử lý lần lượt.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DrugFoodInteractionUpdate"
+              },
+              "examples": {
+                "severity": {
+                  "value": {
+                    "expected_version": 1,
+                    "severity_level": 4
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Phiên bản hiện hành sau khi sửa.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrugFoodInteraction"
+                },
+                "examples": {
+                  "updated": {
+                    "value": {
+                      "id": 301,
+                      "version": 2,
+                      "version_id": 344,
+                      "state": "current",
+                      "ingredient": {
+                        "id": 56,
+                        "standard_name": "Simvastatin"
+                      },
+                      "food_to_avoid": "Nước bưởi chùm",
+                      "severity_level": 4,
+                      "reason": "Tăng nồng độ simvastatin trong máu; tránh uống nước bưởi chùm.",
+                      "source": "Dược thư Quốc gia Việt Nam 2022",
+                      "verification_status": "da_xac_minh",
+                      "created_at": "2026-10-05T09:12:44+07:00",
+                      "updated_at": "2026-10-11T14:03:10+07:00",
+                      "updated_by": {
+                        "id": "6f1c2b8e-3d4a-4c1e-9b0a-2f7e5d9c1a33",
+                        "email": "admin@drugtime.vn"
+                      },
+                      "superseded_at": null,
+                      "deleted_at": null,
+                      "deleted_by": null
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/AdminForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/InteractionRuleNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/InteractionRuleConflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/FoodInteractionUnprocessable"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "interaction"
+        ],
+        "operationId": "deleteDrugFoodInteraction",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Admin: xóa mềm quy tắc hoạt chất–thực phẩm",
+        "description": "Như `DELETE /admin/drug-interactions/{id}`.",
+        "parameters": [
+          {
+            "name": "expected_version",
+            "in": "query",
+            "required": true,
+            "description": "Số phiên bản admin đang xem. Khác phiên bản hiện hành → 409 `version_conflict`.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Đã xóa mềm."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/AdminForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/InteractionRuleNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/InteractionRuleConflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/AdminQueryUnprocessable"
+          }
+        }
+      }
+    },
+    "/admin/drug-food-interactions/{id}/versions": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "Mã quy tắc.",
+          "schema": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "interaction"
+        ],
+        "operationId": "listDrugFoodInteractionVersions",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Admin: lịch sử phiên bản của quy tắc hoạt chất–thực phẩm",
+        "description": "Mọi phiên bản, mới nhất trước, kể cả khi quy tắc đã xóa mềm.",
+        "responses": {
+          "200": {
+            "description": "Lịch sử.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrugFoodInteractionVersionList"
+                },
+                "examples": {
+                  "history": {
+                    "value": {
+                      "items": [
+                        {
+                          "id": 301,
+                          "version": 2,
+                          "version_id": 344,
+                          "state": "current",
+                          "ingredient": {
+                            "id": 56,
+                            "standard_name": "Simvastatin"
+                          },
+                          "food_to_avoid": "Nước bưởi chùm",
+                          "severity_level": 4,
+                          "reason": "Tăng nồng độ simvastatin trong máu; tránh uống nước bưởi chùm.",
+                          "source": "Dược thư Quốc gia Việt Nam 2022",
+                          "verification_status": "da_xac_minh",
+                          "created_at": "2026-10-05T09:12:44+07:00",
+                          "updated_at": "2026-10-11T14:03:10+07:00",
+                          "updated_by": {
+                            "id": "6f1c2b8e-3d4a-4c1e-9b0a-2f7e5d9c1a33",
+                            "email": "admin@drugtime.vn"
+                          },
+                          "superseded_at": null,
+                          "deleted_at": null,
+                          "deleted_by": null
+                        },
+                        {
+                          "id": 301,
+                          "version": 1,
+                          "version_id": 301,
+                          "state": "superseded",
+                          "ingredient": {
+                            "id": 56,
+                            "standard_name": "Simvastatin"
+                          },
+                          "food_to_avoid": "Nước bưởi chùm",
+                          "severity_level": 3,
+                          "reason": "Tăng nồng độ simvastatin trong máu; tránh uống nước bưởi chùm.",
+                          "source": "Dược thư Quốc gia Việt Nam 2022",
+                          "verification_status": "da_xac_minh",
+                          "created_at": "2026-10-05T09:12:44+07:00",
+                          "updated_at": "2026-10-05T09:12:44+07:00",
+                          "updated_by": {
+                            "id": "6f1c2b8e-3d4a-4c1e-9b0a-2f7e5d9c1a33",
+                            "email": "admin@drugtime.vn"
+                          },
+                          "superseded_at": "2026-10-11T14:03:10+07:00",
+                          "deleted_at": null,
+                          "deleted_by": null
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/AdminForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/InteractionRuleHistoryNotFound"
+          }
+        }
+      }
+    },
+    "/admin/drug-food-interaction-versions/{version_id}": {
+      "parameters": [
+        {
+          "name": "version_id",
+          "in": "path",
+          "required": true,
+          "description": "Id phiên bản.",
+          "schema": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "interaction"
+        ],
+        "operationId": "getDrugFoodInteractionVersion",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Admin: xem một phiên bản quy tắc hoạt chất–thực phẩm",
+        "responses": {
+          "200": {
+            "description": "Phiên bản.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrugFoodInteraction"
+                },
+                "examples": {
+                  "old": {
+                    "value": {
+                      "id": 301,
+                      "version": 1,
+                      "version_id": 301,
+                      "state": "superseded",
+                      "ingredient": {
+                        "id": 56,
+                        "standard_name": "Simvastatin"
+                      },
+                      "food_to_avoid": "Nước bưởi chùm",
+                      "severity_level": 3,
+                      "reason": "Tăng nồng độ simvastatin trong máu; tránh uống nước bưởi chùm.",
+                      "source": "Dược thư Quốc gia Việt Nam 2022",
+                      "verification_status": "da_xac_minh",
+                      "created_at": "2026-10-05T09:12:44+07:00",
+                      "updated_at": "2026-10-05T09:12:44+07:00",
+                      "updated_by": {
+                        "id": "6f1c2b8e-3d4a-4c1e-9b0a-2f7e5d9c1a33",
+                        "email": "admin@drugtime.vn"
+                      },
+                      "superseded_at": "2026-10-11T14:03:10+07:00",
+                      "deleted_at": null,
+                      "deleted_by": null
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/AdminForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/InteractionVersionNotFound"
+          }
+        }
+      }
+    },
+    "/admin/active-ingredients": {
+      "get": {
+        "tags": [
+          "catalog"
+        ],
+        "operationId": "listActiveIngredients",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Admin: tra cứu hoạt chất trong danh mục",
+        "description": "Dùng để chọn hoạt chất khi nhập quy tắc tương tác. Bộ lọc kết hợp bằng AND; sắp theo `standard_name` tăng dần, rồi `id`.",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "description": "Từ khóa, không phân biệt hoa thường; khớp một phần tên chuẩn hoặc tên gọi khác (alias)."
+          },
+          {
+            "name": "medication_id",
+            "in": "query",
+            "required": false,
+            "description": "Chỉ các hoạt chất của thuốc này (bảng thuốc–hoạt chất). Thuốc không tồn tại hoặc chưa có hoạt chất → danh sách rỗng.",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "description": "Số phần tử bỏ qua.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Số phần tử tối đa của trang.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Một trang hoạt chất.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActiveIngredientPage"
+                },
+                "examples": {
+                  "page": {
+                    "value": {
+                      "items": [
+                        {
+                          "id": 12,
+                          "standard_name": "Warfarin",
+                          "atc_code": "B01AA03",
+                          "pharmacological_group": "Thuốc chống đông kháng vitamin K",
+                          "aliases": [
+                            "Warfarin natri"
+                          ]
+                        }
+                      ],
+                      "total": 1
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/AdminForbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/AdminQueryUnprocessable"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3391,6 +4904,774 @@
             "description": "Con trỏ của trang kế; `null` ở trang cuối."
           }
         }
+      },
+      "InteractionSeverity": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 4,
+        "description": "Mức độ tương tác, số càng lớn càng nguy hiểm:\n- `1`: cần theo dõi\n- `2`: cần thận trọng\n- `3`: cân nhắc lợi ích/nguy cơ\n- `4`: phối hợp nguy hiểm\n\nAPI truyền số; nhãn tiếng Việt chỉ hiển thị ở giao diện."
+      },
+      "InteractionType": {
+        "type": "string",
+        "enum": [
+          "chong_chi_dinh",
+          "phu_thuoc_lieu"
+        ],
+        "description": "- `chong_chi_dinh`: không phối hợp, không xét liều; luôn đi với `severity_level = 4` và không có ngưỡng liều.\n- `phu_thuoc_lieu`: mức độ thay đổi theo tổng liều/ngày, mô tả bằng `dose_thresholds`."
+      },
+      "HandlingType": {
+        "type": "string",
+        "enum": [
+          "tranh_phoi_hop",
+          "can_theo_doi",
+          "cach_gio",
+          "giam_lieu"
+        ],
+        "description": "Cách xử lý khuyến nghị: tránh phối hợp, cần theo dõi, uống cách giờ, giảm liều. Chỉ là nội dung cảnh báo; hệ thống không tự đổi lịch uống."
+      },
+      "MinIntervalHours": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "exclusiveMinimum": 0,
+        "maximum": 168,
+        "description": "Số giờ tối thiểu giữa hai thuốc. Chỉ được có giá trị khi `handling_type = cach_gio`, và không bắt buộc (để `null` khi nguồn không ghi số giờ). Gửi kèm cách xử lý khác → 422 `min_interval_not_allowed`."
+      },
+      "RecordState": {
+        "type": "string",
+        "enum": [
+          "current",
+          "superseded",
+          "deleted"
+        ],
+        "description": "- `current`: phiên bản hiện hành của quy tắc chưa xóa.\n- `superseded`: phiên bản cũ, đã bị thay bằng phiên bản mới khi sửa.\n- `deleted`: phiên bản hiện hành tại lúc quy tắc bị xóa mềm."
+      },
+      "ActiveIngredientRef": {
+        "type": "object",
+        "required": [
+          "id",
+          "standard_name"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "standard_name": {
+            "type": "string"
+          }
+        }
+      },
+      "AdminRef": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "required": [
+          "id",
+          "email"
+        ],
+        "additionalProperties": false,
+        "description": "Admin thực hiện thao tác; `null` với dữ liệu có trước khi lưu người sửa hoặc do đồng bộ tạo.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "DoseThresholdInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ingredient_ref",
+          "dose_unit",
+          "severity_level",
+          "warning_text"
+        ],
+        "anyOf": [
+          {
+            "required": [
+              "min_dose"
+            ]
+          },
+          {
+            "required": [
+              "max_dose"
+            ]
+          }
+        ],
+        "description": "Một khoảng liều/ngày của hoạt chất A hoặc B và mức độ tương ứng. Cần ít nhất một trong `min_dose`, `max_dose` (khác `null`); `min_dose <= max_dose` khi có cả hai (sai → 422 `threshold_range_invalid`). Đơn vị phải là đơn vị chuẩn (QD-38); server không quy đổi đơn vị.",
+        "properties": {
+          "ingredient_ref": {
+            "type": "string",
+            "enum": [
+              "A",
+              "B"
+            ],
+            "description": "Ngưỡng áp cho hoạt chất A hay B của quy tắc. `B` không dùng được khi B là tên ngoài danh mục (422 `threshold_ref_invalid`)."
+          },
+          "min_dose": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "max_dose": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "dose_unit": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50,
+            "pattern": "\\S",
+            "examples": [
+              "mg/ngày"
+            ]
+          },
+          "severity_level": {
+            "$ref": "#/components/schemas/InteractionSeverity"
+          },
+          "warning_text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000,
+            "pattern": "\\S"
+          }
+        }
+      },
+      "DoseThreshold": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "ingredient_ref",
+          "min_dose",
+          "max_dose",
+          "dose_unit",
+          "severity_level",
+          "warning_text"
+        ],
+        "description": "Ngưỡng liều thuộc **một phiên bản** quy tắc; phiên bản mới có ngưỡng với id mới.",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "ingredient_ref": {
+            "type": "string",
+            "enum": [
+              "A",
+              "B"
+            ]
+          },
+          "min_dose": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "max_dose": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "dose_unit": {
+            "type": "string"
+          },
+          "severity_level": {
+            "$ref": "#/components/schemas/InteractionSeverity"
+          },
+          "warning_text": {
+            "type": "string"
+          }
+        }
+      },
+      "DrugInteractionCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ingredient_a_id",
+          "interaction_type",
+          "severity_level",
+          "handling_type",
+          "description",
+          "source"
+        ],
+        "oneOf": [
+          {
+            "required": [
+              "ingredient_b_id"
+            ],
+            "not": {
+              "required": [
+                "ingredient_b_external_name"
+              ]
+            }
+          },
+          {
+            "required": [
+              "ingredient_b_external_name"
+            ],
+            "not": {
+              "required": [
+                "ingredient_b_id"
+              ]
+            }
+          }
+        ],
+        "description": "Hoạt chất B là **đúng một** trong `ingredient_b_id` (hoạt chất trong danh mục) hoặc `ingredient_b_external_name` (chất ngoài danh mục, ví dụ rượu). Không có `verification_status` (field lạ → 422).",
+        "properties": {
+          "ingredient_a_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "ingredient_b_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "ingredient_b_external_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "\\S"
+          },
+          "interaction_type": {
+            "$ref": "#/components/schemas/InteractionType"
+          },
+          "severity_level": {
+            "$ref": "#/components/schemas/InteractionSeverity"
+          },
+          "handling_type": {
+            "$ref": "#/components/schemas/HandlingType"
+          },
+          "min_interval_hours": {
+            "$ref": "#/components/schemas/MinIntervalHours"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000,
+            "pattern": "\\S",
+            "description": "Cơ chế, hậu quả lâm sàng và khuyến nghị."
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "pattern": "\\S"
+          },
+          "dose_thresholds": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "$ref": "#/components/schemas/DoseThresholdInput"
+            },
+            "description": "Chỉ cho `phu_thuoc_lieu`; bỏ trống tương đương `[]`."
+          }
+        }
+      },
+      "DrugInteractionUpdate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "expected_version"
+        ],
+        "minProperties": 2,
+        "description": "Gửi `expected_version` và ít nhất một field nội dung; field không gửi giữ nguyên. Không đổi được cặp hoạt chất (gửi `ingredient_a_id`, `ingredient_b_id`, `ingredient_b_external_name` → 422 field lạ): muốn đổi cặp thì xóa và tạo mới.",
+        "properties": {
+          "expected_version": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Số phiên bản admin đang xem. Khác phiên bản hiện hành → 409 `version_conflict`."
+          },
+          "interaction_type": {
+            "$ref": "#/components/schemas/InteractionType"
+          },
+          "severity_level": {
+            "$ref": "#/components/schemas/InteractionSeverity"
+          },
+          "handling_type": {
+            "$ref": "#/components/schemas/HandlingType"
+          },
+          "min_interval_hours": {
+            "$ref": "#/components/schemas/MinIntervalHours"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000,
+            "pattern": "\\S"
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "pattern": "\\S"
+          },
+          "dose_thresholds": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "$ref": "#/components/schemas/DoseThresholdInput"
+            },
+            "description": "Có gửi thì **thay toàn bộ** tập ngưỡng (gửi `[]` để bỏ hết); không gửi thì sao chép tập ngưỡng hiện hành."
+          }
+        }
+      },
+      "DrugInteraction": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "version",
+          "version_id",
+          "state",
+          "ingredient_a",
+          "ingredient_b",
+          "ingredient_b_external_name",
+          "interaction_type",
+          "severity_level",
+          "handling_type",
+          "min_interval_hours",
+          "description",
+          "source",
+          "verification_status",
+          "dose_thresholds",
+          "created_at",
+          "updated_at",
+          "updated_by",
+          "superseded_at",
+          "deleted_at",
+          "deleted_by"
+        ],
+        "description": "Một phiên bản của quy tắc tương tác giữa hai hoạt chất. Danh sách và chi tiết trả phiên bản hiện hành (`state = current`); lịch sử trả mọi phiên bản.",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Mã quy tắc, **không đổi** qua mọi lần sửa. Dùng trong đường dẫn API."
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Số phiên bản, tăng 1 sau mỗi lần sửa có thay đổi."
+          },
+          "version_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Id của phiên bản này. Cảnh báo đã hiển thị cho người bệnh trỏ tới id này, nên luôn xem lại được đúng nội dung lúc đó qua endpoint xem phiên bản."
+          },
+          "state": {
+            "$ref": "#/components/schemas/RecordState"
+          },
+          "ingredient_a": {
+            "$ref": "#/components/schemas/ActiveIngredientRef"
+          },
+          "ingredient_b": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ActiveIngredientRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`null` khi B là chất ngoài danh mục."
+          },
+          "ingredient_b_external_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "interaction_type": {
+            "$ref": "#/components/schemas/InteractionType"
+          },
+          "severity_level": {
+            "$ref": "#/components/schemas/InteractionSeverity"
+          },
+          "handling_type": {
+            "$ref": "#/components/schemas/HandlingType"
+          },
+          "min_interval_hours": {
+            "$ref": "#/components/schemas/MinIntervalHours"
+          },
+          "description": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "description": "Nguồn tài liệu, ví dụ `QĐ 5948/QĐ-BYT`."
+          },
+          "verification_status": {
+            "type": "string",
+            "enum": [
+              "da_xac_minh"
+            ],
+            "description": "Chỉ đọc. Server luôn ghi `da_xac_minh`; không có bước duyệt (quy tắc có hiệu lực ngay)."
+          },
+          "dose_thresholds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DoseThreshold"
+            }
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Thời điểm tạo phiên bản 1 của quy tắc."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Thời điểm tạo phiên bản này."
+          },
+          "updated_by": {
+            "$ref": "#/components/schemas/AdminRef"
+          },
+          "superseded_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Thời điểm phiên bản này bị thay; `null` nếu chưa bị thay."
+          },
+          "deleted_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Thời điểm quy tắc bị xóa mềm (chỉ có ở phiên bản `deleted`)."
+          },
+          "deleted_by": {
+            "$ref": "#/components/schemas/AdminRef"
+          }
+        }
+      },
+      "DrugInteractionPage": {
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/DrugInteraction"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "DrugInteractionVersionList": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DrugInteraction"
+            },
+            "description": "Mọi phiên bản, mới nhất trước."
+          }
+        }
+      },
+      "DrugFoodInteractionCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ingredient_id",
+          "food_to_avoid",
+          "severity_level",
+          "reason",
+          "source"
+        ],
+        "properties": {
+          "ingredient_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "food_to_avoid": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "\\S",
+            "description": "Thực phẩm/đồ uống cần tránh. Trùng lặp so sánh không phân biệt hoa thường."
+          },
+          "severity_level": {
+            "$ref": "#/components/schemas/InteractionSeverity"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000,
+            "pattern": "\\S",
+            "description": "Lý do và khuyến nghị (ví dụ thời điểm uống)."
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "pattern": "\\S"
+          }
+        }
+      },
+      "DrugFoodInteractionUpdate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "expected_version"
+        ],
+        "minProperties": 2,
+        "description": "Gửi `expected_version` và ít nhất một field; không đổi được hoạt chất (`ingredient_id` → 422 field lạ).",
+        "properties": {
+          "expected_version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "food_to_avoid": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "\\S"
+          },
+          "severity_level": {
+            "$ref": "#/components/schemas/InteractionSeverity"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000,
+            "pattern": "\\S"
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "pattern": "\\S"
+          }
+        }
+      },
+      "DrugFoodInteraction": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "version",
+          "version_id",
+          "state",
+          "ingredient",
+          "food_to_avoid",
+          "severity_level",
+          "reason",
+          "source",
+          "verification_status",
+          "created_at",
+          "updated_at",
+          "updated_by",
+          "superseded_at",
+          "deleted_at",
+          "deleted_by"
+        ],
+        "description": "Một phiên bản của quy tắc tương tác hoạt chất–thực phẩm.",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Mã quy tắc, **không đổi** qua mọi lần sửa. Dùng trong đường dẫn API."
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Số phiên bản, tăng 1 sau mỗi lần sửa có thay đổi."
+          },
+          "version_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Id của phiên bản này. Cảnh báo đã hiển thị cho người bệnh trỏ tới id này, nên luôn xem lại được đúng nội dung lúc đó qua endpoint xem phiên bản."
+          },
+          "state": {
+            "$ref": "#/components/schemas/RecordState"
+          },
+          "ingredient": {
+            "$ref": "#/components/schemas/ActiveIngredientRef"
+          },
+          "food_to_avoid": {
+            "type": "string"
+          },
+          "severity_level": {
+            "$ref": "#/components/schemas/InteractionSeverity"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "description": "Nguồn tài liệu, ví dụ `QĐ 5948/QĐ-BYT`."
+          },
+          "verification_status": {
+            "type": "string",
+            "enum": [
+              "da_xac_minh"
+            ],
+            "description": "Chỉ đọc. Server luôn ghi `da_xac_minh`; không có bước duyệt (quy tắc có hiệu lực ngay)."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Thời điểm tạo phiên bản 1 của quy tắc."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Thời điểm tạo phiên bản này."
+          },
+          "updated_by": {
+            "$ref": "#/components/schemas/AdminRef"
+          },
+          "superseded_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Thời điểm phiên bản này bị thay; `null` nếu chưa bị thay."
+          },
+          "deleted_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Thời điểm quy tắc bị xóa mềm (chỉ có ở phiên bản `deleted`)."
+          },
+          "deleted_by": {
+            "$ref": "#/components/schemas/AdminRef"
+          }
+        }
+      },
+      "DrugFoodInteractionPage": {
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/DrugFoodInteraction"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "DrugFoodInteractionVersionList": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DrugFoodInteraction"
+            },
+            "description": "Mọi phiên bản, mới nhất trước."
+          }
+        }
+      },
+      "ActiveIngredientSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "standard_name",
+          "atc_code",
+          "pharmacological_group",
+          "aliases"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "standard_name": {
+            "type": "string"
+          },
+          "atc_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pharmacological_group": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tên gọi khác của hoạt chất."
+          }
+        }
+      },
+      "ActiveIngredientPage": {
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/ActiveIngredientSummary"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
       }
     },
     "responses": {
@@ -3615,6 +5896,216 @@
                   "detail": "last_schedule_not_removable"
                 }
               }
+            }
+          }
+        }
+      },
+      "AdminForbidden": {
+        "description": "Tài khoản không phải admin. `detail` = `admin_only`.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "examples": {
+              "admin_only": {
+                "value": {
+                  "detail": "admin_only"
+                }
+              }
+            }
+          }
+        }
+      },
+      "InteractionRuleNotFound": {
+        "description": "`detail` = `interaction_rule_not_found`: không có quy tắc nào với mã này, hoặc quy tắc đã bị xóa mềm.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "examples": {
+              "not_found": {
+                "value": {
+                  "detail": "interaction_rule_not_found"
+                }
+              }
+            }
+          }
+        }
+      },
+      "InteractionVersionNotFound": {
+        "description": "`detail` = `interaction_version_not_found`: không có phiên bản nào với id này (kể cả phiên bản cũ, phiên bản đã xóa).",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "examples": {
+              "not_found": {
+                "value": {
+                  "detail": "interaction_version_not_found"
+                }
+              }
+            }
+          }
+        }
+      },
+      "InteractionRuleHistoryNotFound": {
+        "description": "`detail` = `interaction_rule_not_found`: chưa từng có quy tắc nào với mã này. Quy tắc đã xóa mềm vẫn xem được lịch sử.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "examples": {
+              "not_found": {
+                "value": {
+                  "detail": "interaction_rule_not_found"
+                }
+              }
+            }
+          }
+        }
+      },
+      "InteractionRuleConflict": {
+        "description": "`detail`:\n- `interaction_rule_exists`: đã có quy tắc **chưa xóa** cho cùng cặp (thuốc-thuốc: cặp hoạt chất không phân biệt thứ tự A/B, hoặc cặp (A, tên ngoài) không phân biệt hoa thường; thuốc-thực phẩm: cặp (hoạt chất, thực phẩm) không phân biệt hoa thường). Áp cả khi hai request tạo cùng lúc. Không có gì được ghi.\n- `version_conflict` (chỉ `PATCH`, `DELETE`): `expected_version` khác phiên bản hiện hành (admin khác vừa sửa). Không có gì được ghi; client tải lại quy tắc rồi để admin thao tác lại.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "examples": {
+              "exists": {
+                "value": {
+                  "detail": "interaction_rule_exists"
+                }
+              },
+              "version": {
+                "value": {
+                  "detail": "version_conflict"
+                }
+              }
+            }
+          }
+        }
+      },
+      "InteractionUnprocessable": {
+        "description": "Dữ liệu không hợp lệ; không có gì được ghi.\n\n- Sai cấu trúc hoặc ràng buộc từng field (thiếu field bắt buộc, sai kiểu, ngoài khoảng, enum sai, chuỗi rỗng, gửi cả hoặc không gửi `ingredient_b_id`/`ingredient_b_external_name`, field lạ như `verification_status` hay cặp hoạt chất khi sửa): `ValidationError`.\n- Vi phạm quy tắc nghiệp vụ: `ErrorDetail` với `detail` là một trong:\n  - `active_ingredient_not_found`: id hoạt chất không có trong danh mục.\n  - `same_ingredient`: hoạt chất A trùng hoạt chất B.\n  - `contraindication_severity_mismatch`: `chong_chi_dinh` mà `severity_level` khác 4.\n  - `threshold_not_allowed`: `chong_chi_dinh` mà có ngưỡng liều (kể cả khi `PATCH` đổi sang `chong_chi_dinh` trong khi phiên bản hiện hành còn ngưỡng và không gửi `dose_thresholds: []`).\n  - `threshold_ref_invalid`: ngưỡng `ingredient_ref = B` khi B là chất ngoài danh mục.\n  - `threshold_range_invalid`: ngưỡng có `min_dose > max_dose`, hoặc cả hai `null`.\n  - `min_interval_not_allowed`: có `min_interval_hours` mà `handling_type` khác `cach_gio` (kể cả khi `PATCH` đổi `handling_type` mà phiên bản hiện hành còn `min_interval_hours` và không gửi `min_interval_hours: null`).",
+        "content": {
+          "application/json": {
+            "schema": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              ]
+            },
+            "examples": {
+              "field": {
+                "summary": "Sai field",
+                "value": {
+                  "detail": [
+                    {
+                      "loc": [
+                        "body",
+                        "severity_level"
+                      ],
+                      "msg": "Input should be less than or equal to 4",
+                      "type": "less_than_equal"
+                    }
+                  ]
+                }
+              },
+              "ingredient": {
+                "summary": "Hoạt chất không tồn tại",
+                "value": {
+                  "detail": "active_ingredient_not_found"
+                }
+              },
+              "same": {
+                "summary": "A trùng B",
+                "value": {
+                  "detail": "same_ingredient"
+                }
+              },
+              "contraindication": {
+                "summary": "Chống chỉ định nhưng mức 2",
+                "value": {
+                  "detail": "contraindication_severity_mismatch"
+                }
+              },
+              "interval": {
+                "summary": "Số giờ đi với cách xử lý khác cach_gio",
+                "value": {
+                  "detail": "min_interval_not_allowed"
+                }
+              }
+            }
+          }
+        }
+      },
+      "FoodInteractionUnprocessable": {
+        "description": "Dữ liệu không hợp lệ; không có gì được ghi.\n\n- Sai cấu trúc hoặc ràng buộc từng field (gồm field lạ như `verification_status` hay `ingredient_id` khi sửa): `ValidationError`.\n- `ErrorDetail` với `detail` = `active_ingredient_not_found`: id hoạt chất không có trong danh mục.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              ]
+            },
+            "examples": {
+              "field": {
+                "summary": "Sai field",
+                "value": {
+                  "detail": [
+                    {
+                      "loc": [
+                        "body",
+                        "severity_level"
+                      ],
+                      "msg": "Input should be less than or equal to 4",
+                      "type": "less_than_equal"
+                    }
+                  ]
+                }
+              },
+              "ingredient": {
+                "summary": "Hoạt chất không tồn tại",
+                "value": {
+                  "detail": "active_ingredient_not_found"
+                }
+              }
+            }
+          }
+        }
+      },
+      "AdminQueryUnprocessable": {
+        "description": "Tham số query sai (kiểu, khoảng): `ValidationError`.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "example": {
+              "detail": [
+                {
+                  "loc": [
+                    "query",
+                    "limit"
+                  ],
+                  "msg": "Input should be less than or equal to 100",
+                  "type": "less_than_equal"
+                }
+              ]
             }
           }
         }
