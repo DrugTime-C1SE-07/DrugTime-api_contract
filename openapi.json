@@ -25,6 +25,10 @@
     {
       "name": "interaction",
       "description": "Danh mục quy tắc tương tác thuốc-thuốc và thuốc-thực phẩm (admin), có phiên bản."
+    },
+    {
+      "name": "family",
+      "description": "Liên kết người bệnh với người thân: mã liên kết, yêu cầu liên kết, chia sẻ dữ liệu."
     }
   ],
   "paths": {
@@ -4022,6 +4026,46 @@
           }
         }
       }
+    },
+    "/family/link-code": {
+      "get": {
+        "tags": [
+          "family"
+        ],
+        "operationId": "getMyLinkCode",
+        "summary": "Mã liên kết cố định của chính người gọi",
+        "description": "Trả mã liên kết của **chính người gọi**, dùng để mời người thân liên kết (QD-04): mỗi tài khoản có **đúng một mã cố định, không hết hạn**, không đổi được và không bị vô hiệu sau khi dùng. Lần gọi đầu server tự sinh mã; mọi lần gọi sau (kể cả các request đồng thời) trả lại đúng mã đó. Không nhận tham số; không thể lấy mã của người khác.\n\nMobile hiển thị `code` để người thân nhập tay và vẽ `qr_payload` thành mã QR để người thân quét. Server không trả ảnh QR.\n\nNgười thân nhập hoặc quét mã chỉ tạo **yêu cầu** liên kết; người bệnh phải chấp thuận thì liên kết mới có hiệu lực (endpoint gửi yêu cầu thuộc task 3.13). Phản hồi không chứa thông tin hồ sơ.\n\nPhân quyền: phiên hợp lệ của tài khoản cá nhân. Tài khoản admin nhận 403 `khong_co_quyen` (QD-44). Mã liên kết không phải dữ liệu sức khỏe, nên không kiểm consent và không ghi nhật ký truy cập.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Mã liên kết của người gọi (mới sinh ở lần gọi đầu, hoặc mã đã có).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkCode"
+                },
+                "example": {
+                  "code": "K7M2Q9XAR4",
+                  "qr_payload": "drugtime://link?code=K7M2Q9XAR4"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/PersonalAccountForbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/LinkCodeUnavailable"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -5672,6 +5716,28 @@
             "minimum": 0
           }
         }
+      },
+      "LinkCode": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "qr_payload"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^[A-HJKMNP-Z2-9]{10}$",
+            "minLength": 10,
+            "maxLength": 10,
+            "description": "Mã liên kết, 10 ký tự chữ hoa và số, đã bỏ các ký tự dễ nhầm `0`, `O`, `1`, `I`, `L` (QD-34). Không đổi suốt đời tài khoản. Client hiển thị nguyên văn; có thể chia nhóm khi hiển thị nhưng không đổi nội dung."
+          },
+          "qr_payload": {
+            "type": "string",
+            "pattern": "^drugtime://link\\?code=[A-HJKMNP-Z2-9]{10}$",
+            "description": "Chuỗi để vẽ thành mã QR, luôn là `drugtime://link?code=<code>`. Bên quét tách mã từ tham số `code`."
+          }
+        }
       }
     },
     "responses": {
@@ -6106,6 +6172,40 @@
                   "type": "less_than_equal"
                 }
               ]
+            }
+          }
+        }
+      },
+      "PersonalAccountForbidden": {
+        "description": "`detail` = `khong_co_quyen`: tài khoản admin gọi tính năng dành cho tài khoản cá nhân (QD-44). Không ghi nhật ký truy cập vì không chạm dữ liệu sức khỏe.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "examples": {
+              "no_access": {
+                "value": {
+                  "detail": "khong_co_quyen"
+                }
+              }
+            }
+          }
+        }
+      },
+      "LinkCodeUnavailable": {
+        "description": "`detail` = `link_code_unavailable`: người gọi chưa có mã và server không sinh được mã duy nhất sau số lần thử tối đa. Không có gì được ghi; client thử lại sau.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "examples": {
+              "unavailable": {
+                "value": {
+                  "detail": "link_code_unavailable"
+                }
+              }
             }
           }
         }
