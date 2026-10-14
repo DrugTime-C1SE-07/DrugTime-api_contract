@@ -5738,6 +5738,110 @@
             "description": "Chuỗi để vẽ thành mã QR, luôn là `drugtime://link?code=<code>`. Bên quét tách mã từ tham số `code`."
           }
         }
+      },
+      "NotificationType": {
+        "type": "string",
+        "enum": [
+          "canh_bao_bo_lo_lieu_nguoi_than"
+        ],
+        "description": "Loại thông báo / cảnh báo trong hệ thống."
+      },
+      "NotificationItem": {
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "title",
+          "content",
+          "is_read",
+          "about_patient_user_id",
+          "about_patient_name",
+          "created_at"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Mã định danh duy nhất của thông báo."
+          },
+          "type": {
+            "$ref": "#/components/schemas/NotificationType"
+          },
+          "title": {
+            "type": "string",
+            "description": "Tiêu đề thông báo."
+          },
+          "content": {
+            "type": "string",
+            "description": "Nội dung chi tiết thông báo."
+          },
+          "is_read": {
+            "type": "boolean",
+            "description": "Trạng thái đã đọc của thông báo."
+          },
+          "about_patient_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "ID người bệnh liên quan đến cảnh báo này (nếu có)."
+          },
+          "about_patient_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Họ tên của người bệnh liên quan (nếu có, hiển thị theo PB20 AC)."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Thời điểm tạo thông báo (chuẩn ISO 8601)."
+          }
+        }
+      },
+      "NotificationList": {
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "unread_count"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NotificationItem"
+            },
+            "description": "Danh sách thông báo của người gọi, sắp xếp theo `created_at` giảm dần."
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Tổng số thông báo phù hợp bộ lọc."
+          },
+          "unread_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Tổng số thông báo chưa đọc của người dùng."
+          }
+        }
+      },
+      "NotificationUpdateRequest": {
+        "type": "object",
+        "required": [
+          "is_read"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "is_read": {
+            "type": "boolean",
+            "description": "Trạng thái đã đọc mới cần cập nhật."
+          }
+        }
       }
     },
     "responses": {
