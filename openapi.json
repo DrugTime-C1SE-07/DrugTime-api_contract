@@ -21,6 +21,10 @@
     {
       "name": "consent",
       "description": "Đồng ý xử lý dữ liệu theo từng mục đích (PDPL 2025) của chính người gọi."
+    },
+    {
+      "name": "notification",
+      "description": "Hộp thư thông báo và cảnh báo tuân thủ (Notification Inbox) của người dùng."
     }
   ],
   "paths": {
@@ -1766,6 +1770,202 @@
           }
         }
       }
+    },
+    "/notifications": {
+      "get": {
+        "tags": [
+          "notification"
+        ],
+        "operationId": "listMyNotifications",
+        "summary": "Lấy danh sách thông báo của chính người gọi",
+        "description": "Truy vấn hộp thư thông báo (Notification Inbox) của người dùng hiện tại (bệnh nhân hoặc người thân). Phục vụ hiển thị danh sách cảnh báo trên app Mobile, đặc biệt quan trọng cho người dùng iOS do không nhận được push notification qua APNs trong Phase 1 (quyết định C-06, C-07, BS-03). Client gọi khi mở app hoặc khi người dùng mở màn hình Thông báo.\n\nPhân quyền: Mọi phiên đăng nhập hợp lệ (`bearerAuth`). Chỉ trả về thông báo thuộc sở hữu của chính người gọi (`user_id = current_user.id`).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "is_read",
+            "in": "query",
+            "required": false,
+            "description": "Lọc theo trạng thái đã đọc (`true`: chỉ lấy đã đọc; `false`: chỉ lấy chưa đọc; không truyền: lấy tất cả).",
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ],
+              "default": null
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Số lượng thông báo tối đa trả về trên mỗi trang.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "description": "Số lượng bản ghi bỏ qua (phục vụ phân trang).",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Danh sách thông báo của người gọi.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationList"
+                },
+                "examples": {
+                  "unread_alerts": {
+                    "summary": "Người thân có thông báo cảnh báo bỏ lỡ liều chưa đọc",
+                    "value": {
+                      "items": [
+                        {
+                          "id": 105,
+                          "type": "canh_bao_bo_lo_lieu_nguoi_than",
+                          "title": "DrugTime",
+                          "content": "Bác Nguyễn Văn A chưa ghi nhận liều thuốc lúc 08:00",
+                          "is_read": false,
+                          "about_patient_user_id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+                          "about_patient_name": "Nguyễn Văn A",
+                          "created_at": "2026-10-13T10:05:00+07:00"
+                        }
+                      ],
+                      "total": 1,
+                      "unread_count": 1
+                    }
+                  },
+                  "empty": {
+                    "summary": "Hộp thư rỗng, không có thông báo",
+                    "value": {
+                      "items": [],
+                      "total": 0,
+                      "unread_count": 0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "422": {
+            "description": "Tham số query không hợp lệ (ví dụ: limit âm, ngoài khoảng).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/notifications/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "Mã định danh duy nhất của thông báo (`NotificationItem.id`).",
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          }
+        }
+      ],
+      "patch": {
+        "tags": [
+          "notification"
+        ],
+        "operationId": "updateNotificationStatus",
+        "summary": "Cập nhật trạng thái đã đọc của thông báo",
+        "description": "Đánh dấu một thông báo là đã đọc (`is_read: true`) hoặc chưa đọc (`is_read: false`). Chỉ có thể cập nhật thông báo thuộc sở hữu của chính người gọi (`user_id = current_user.id`). Cập nhật thông báo của người khác hoặc không tồn tại sẽ trả về lỗi 404 `notification_not_found` (khớp với grant `UPDATE (is_read) ON notifications TO api_role`).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationUpdateRequest"
+              },
+              "examples": {
+                "mark_as_read": {
+                  "summary": "Đánh dấu thông báo đã đọc",
+                  "value": {
+                    "is_read": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cập nhật thành công. Trả về thông tin thông báo sau khi cập nhật.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationItem"
+                },
+                "examples": {
+                  "updated": {
+                    "summary": "Thông báo sau khi đánh dấu đã đọc",
+                    "value": {
+                      "id": 105,
+                      "type": "canh_bao_bo_lo_lieu_nguoi_than",
+                      "title": "DrugTime",
+                      "content": "Bác Nguyễn Văn A chưa ghi nhận liều thuốc lúc 08:00",
+                      "is_read": true,
+                      "about_patient_user_id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+                      "about_patient_name": "Nguyễn Văn A",
+                      "created_at": "2026-10-13T10:05:00+07:00"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotificationNotFound"
+          },
+          "422": {
+            "description": "Dữ liệu body không hợp lệ (sai kiểu `is_read`, thiếu trường).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2501,6 +2701,110 @@
             "$ref": "#/components/schemas/ConsentDocumentVersion"
           }
         }
+      },
+      "NotificationType": {
+        "type": "string",
+        "enum": [
+          "canh_bao_bo_lo_lieu_nguoi_than"
+        ],
+        "description": "Loại thông báo / cảnh báo trong hệ thống."
+      },
+      "NotificationItem": {
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "title",
+          "content",
+          "is_read",
+          "about_patient_user_id",
+          "about_patient_name",
+          "created_at"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Mã định danh duy nhất của thông báo."
+          },
+          "type": {
+            "$ref": "#/components/schemas/NotificationType"
+          },
+          "title": {
+            "type": "string",
+            "description": "Tiêu đề thông báo."
+          },
+          "content": {
+            "type": "string",
+            "description": "Nội dung chi tiết thông báo."
+          },
+          "is_read": {
+            "type": "boolean",
+            "description": "Trạng thái đã đọc của thông báo."
+          },
+          "about_patient_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "ID người bệnh liên quan đến cảnh báo này (nếu có)."
+          },
+          "about_patient_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Họ tên của người bệnh liên quan (nếu có, hiển thị theo PB20 AC)."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Thời điểm tạo thông báo (chuẩn ISO 8601)."
+          }
+        }
+      },
+      "NotificationList": {
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "unread_count"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NotificationItem"
+            },
+            "description": "Danh sách thông báo của người gọi, sắp xếp theo `created_at` giảm dần."
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Tổng số thông báo phù hợp bộ lọc."
+          },
+          "unread_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Tổng số thông báo chưa đọc của người dùng."
+          }
+        }
+      },
+      "NotificationUpdateRequest": {
+        "type": "object",
+        "required": [
+          "is_read"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "is_read": {
+            "type": "boolean",
+            "description": "Trạng thái đã đọc mới cần cập nhật."
+          }
+        }
       }
     },
     "responses": {
@@ -2639,6 +2943,19 @@
             },
             "example": {
               "detail": "auth_provider_unavailable"
+            }
+          }
+        }
+      },
+      "NotificationNotFound": {
+        "description": "Không tìm thấy thông báo hoặc thông báo không thuộc về người gọi.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "example": {
+              "detail": "notification_not_found"
             }
           }
         }
