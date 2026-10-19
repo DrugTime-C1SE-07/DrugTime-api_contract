@@ -4034,7 +4034,7 @@
         ],
         "operationId": "getMyLinkCode",
         "summary": "Mã liên kết cố định của chính người gọi",
-        "description": "Trả mã liên kết của **chính người gọi**, dùng để mời người thân liên kết (QD-04): mỗi tài khoản có **đúng một mã cố định, không hết hạn**, không đổi được và không bị vô hiệu sau khi dùng. Lần gọi đầu server tự sinh mã; mọi lần gọi sau (kể cả các request đồng thời) trả lại đúng mã đó. Không nhận tham số; không thể lấy mã của người khác.\n\nMobile hiển thị `code` để người thân nhập tay và vẽ `qr_payload` thành mã QR để người thân quét. Server không trả ảnh QR.\n\nNgười thân nhập hoặc quét mã chỉ tạo **yêu cầu** liên kết; người bệnh phải chấp thuận thì liên kết mới có hiệu lực (endpoint gửi yêu cầu thuộc task 3.13). Phản hồi không chứa thông tin hồ sơ.\n\nPhân quyền: phiên hợp lệ của tài khoản cá nhân. Tài khoản admin nhận 403 `khong_co_quyen` (QD-44). Mã liên kết không phải dữ liệu sức khỏe, nên không kiểm consent và không ghi nhật ký truy cập.",
+        "description": "Trả mã liên kết của **chính người gọi**, dùng để mời người thân liên kết (QD-04): mỗi tài khoản có **đúng một mã cố định, không hết hạn**, không đổi được và không bị vô hiệu sau khi dùng. Lần gọi đầu server tự sinh mã; mọi lần gọi sau (kể cả các request đồng thời) trả lại đúng mã đó. Không nhận tham số; không thể lấy mã của người khác.\n\nMobile hiển thị `code` để người thân nhập tay và vẽ `qr_payload` thành mã QR để người thân quét. Server không trả ảnh QR.\n\nNgười thân nhập hoặc quét mã chỉ tạo **yêu cầu** liên kết; người bệnh phải chấp thuận thì liên kết mới có hiệu lực (`POST /family/link-requests`). Phản hồi không chứa thông tin hồ sơ.\n\nPhân quyền: phiên hợp lệ của tài khoản cá nhân **đã đồng ý `family_sharing`** (BS-05). Chưa đồng ý hoặc đã rút thì nhận 403 `family_sharing_consent_required` và server không trả hay sinh mã; client hiện màn đồng ý chia sẻ, gọi `POST /consents`, rồi gọi lại. Khi người gọi rút `family_sharing`, mã của họ tạm vô hiệu với người nhập (`POST /family/link-requests` trả 404 như mã không tồn tại); đồng ý lại thì đúng mã cũ dùng lại được. Tài khoản admin nhận 403 `khong_co_quyen` (QD-44). Mã liên kết không phải dữ liệu sức khỏe, nên không ghi nhật ký truy cập.",
         "security": [
           {
             "bearerAuth": []
@@ -4059,10 +4059,113 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "$ref": "#/components/responses/PersonalAccountForbidden"
+            "$ref": "#/components/responses/LinkCodeForbidden"
           },
           "503": {
             "$ref": "#/components/responses/LinkCodeUnavailable"
+          }
+        }
+      }
+    },
+    "/family/link-requests": {
+      "post": {
+        "tags": [
+          "family"
+        ],
+        "operationId": "createLinkRequest",
+        "summary": "Người thân gửi yêu cầu liên kết bằng mã của người bệnh",
+        "description": "Người gọi (người thân) nhập hoặc quét mã liên kết của người bệnh để gửi **yêu cầu** liên kết (QD-04). Thành công thì tạo một yêu cầu `pending`; người bệnh phải chấp thuận thì liên kết mới có hiệu lực, và trước đó người gọi không xem được dữ liệu gì. Liên kết mới luôn bắt đầu ở trạng thái chưa bật chia sẻ, kể cả khi trước đây hai người từng liên kết (QD-30). Response không chứa thông tin hồ sơ người bệnh (QD-34).\n\nPhân quyền: phiên hợp lệ của tài khoản cá nhân; tài khoản admin nhận 403 `khong_co_quyen` (QD-44). Không kiểm consent của người gọi. Không chạm dữ liệu sức khỏe nên không ghi nhật ký truy cập.\n\n**Idempotent theo `client_uuid`** (cùng quy ước với `POST /medications`): client sinh một `client_uuid` cho mỗi lần người dùng bấm gửi và dùng lại đúng giá trị đó khi gửi lại. Lần tạo đầu trả 201. Gửi lại cùng `client_uuid` của cùng người dùng trả 200 kèm yêu cầu đã tạo lần đầu ở trạng thái hiện tại, không tạo gì mới, không tính vào giới hạn ngày và không bị chặn bởi khóa; body của lần gửi sau bị bỏ qua, kể cả khi `code` khác. Hai request trùng gửi song song chỉ tạo một yêu cầu; request còn lại nhận 200. Gửi lại `client_uuid` của một lần **không** thành công thì được xử lý lại như request mới, nhưng một `client_uuid` chỉ được tính tối đa một lần nhập sai.\n\n**Quy tắc theo cặp** (người bệnh, người gọi), tính theo chiều:\n- Mỗi cặp có tối đa một yêu cầu `pending` hoặc liên kết `active` (409).\n- Bị từ chối hoặc bị hủy liên kết thì gửi lại được ngay; mỗi lần gửi lại tạo yêu cầu mới, yêu cầu cũ giữ làm lịch sử.\n- Người bệnh từ chối người gọi 5 lần liên tiếp thì người gọi không gửi được cho người bệnh đó trong 24 giờ kể từ lần từ chối thứ 5 (429 `link_request_cooldown`, BS-04). Hết 24 giờ, hoặc khi người bệnh chấp thuận một yêu cầu của cặp, bộ đếm về 0.\n\n**Chống dò mã** (QD-34), theo tài khoản người gọi. \"Nhập sai\" là mọi lần nhận 404 `link_code_not_found`.\n- Một tài khoản nhập sai 5 lần trong 15 phút thì bị khóa 15 phút.\n- Mỗi tài khoản tạo tối đa 10 yêu cầu mỗi ngày (giờ `Asia/Ho_Chi_Minh`); chỉ đếm yêu cầu tạo thành công.\n- Khóa chỉ áp lên người gửi, không bao giờ áp lên người bệnh hay mã của người bệnh.\n- Mọi 429 có header `Retry-After`.\n\nMã của người bệnh chưa đồng ý (hoặc đã rút) `family_sharing` được trả giống hệt mã không tồn tại (BS-05).\n\nThứ tự kiểm: token (401) → cấu trúc body (422 `ValidationError`, có thể trả trước mọi kiểm tra khác) → tài khoản admin (403) → gửi lại `client_uuid` đã thành công (200) → đang bị khóa (429 `link_request_locked`) → đủ 10 yêu cầu trong ngày (429 `link_request_daily_limit`) → mã không tồn tại (404) → mã của chính mình (422 `self_link_not_allowed`) → người bệnh chưa đồng ý `family_sharing` (404) → cặp đã có yêu cầu chờ / đã liên kết (409) → đang trong 24 giờ sau 5 lần bị từ chối (429 `link_request_cooldown`) → tạo (201).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkRequestCreate"
+              },
+              "examples": {
+                "manual": {
+                  "summary": "Nhập tay (server chuẩn hóa chữ hoa, bỏ khoảng trắng hai đầu)",
+                  "value": {
+                    "client_uuid": "9b2e4c71-5d3a-4f8e-a1c6-7e0d2b9f4a58",
+                    "code": " k7m2q9xar4 "
+                  }
+                },
+                "qr": {
+                  "summary": "Mã tách từ qr_payload",
+                  "value": {
+                    "client_uuid": "1f7a3c9d-8e2b-4d6f-b5a0-c4e9d1f2a7b3",
+                    "code": "K7M2Q9XAR4"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Đã tạo yêu cầu, đang chờ người bệnh chấp thuận.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkRequest"
+                },
+                "example": {
+                  "id": 15,
+                  "status": "pending",
+                  "requested_at": "2026-10-14T09:30:12+07:00"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Gửi lại với `client_uuid` đã tạo thành công: không tạo gì mới. Body là yêu cầu đã tạo lần đầu, ở trạng thái hiện tại (có thể đã được chấp thuận, bị từ chối hay bị hủy sau đó).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkRequest"
+                },
+                "examples": {
+                  "replay": {
+                    "value": {
+                      "id": 15,
+                      "status": "pending",
+                      "requested_at": "2026-10-14T09:30:12+07:00"
+                    }
+                  },
+                  "replay_after_approved": {
+                    "summary": "Người bệnh đã chấp thuận trước khi client gửi lại",
+                    "value": {
+                      "id": 15,
+                      "status": "active",
+                      "requested_at": "2026-10-14T09:30:12+07:00"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/PersonalAccountForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/LinkCodeNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/LinkRequestConflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/LinkRequestUnprocessable"
+          },
+          "429": {
+            "$ref": "#/components/responses/LinkRequestRateLimited"
           }
         }
       }
@@ -5842,6 +5945,62 @@
             "description": "Trạng thái đã đọc mới cần cập nhật."
           }
         }
+      },
+      "LinkRequestStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "active",
+          "rejected",
+          "revoked"
+        ],
+        "description": "Trạng thái của yêu cầu liên kết / liên kết.\n\n- `pending`: đang chờ người bệnh chấp thuận. Người thân **chưa** xem được dữ liệu gì.\n- `active`: người bệnh đã chấp thuận.\n- `rejected`: người bệnh đã từ chối.\n- `revoked`: liên kết đã bị hủy.\n\nLần tạo đầu luôn là `pending`. Các giá trị khác chỉ gặp khi gửi lại `client_uuid` cũ (xem `POST /family/link-requests`). Client phải bỏ qua giá trị chưa biết thay vì báo lỗi."
+      },
+      "LinkRequestCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "client_uuid",
+          "code"
+        ],
+        "properties": {
+          "client_uuid": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Client sinh mới cho **mỗi lần người dùng bấm gửi** và dùng lại đúng giá trị đó khi tự gửi lại (mất mạng, hết thời gian chờ). Chỉ có nghĩa trong phạm vi một người dùng."
+          },
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32,
+            "description": "Mã liên kết của người bệnh (`LinkCode.code`), do người thân nhập tay hoặc tách từ `qr_payload`. Server bỏ khoảng trắng hai đầu và đổi sang chữ hoa trước khi kiểm; sau đó phải khớp `^[A-HJKMNP-Z2-9]{10}$`, nếu không trả 422 `ValidationError`. Không gửi nguyên chuỗi `drugtime://link?code=...`."
+          }
+        }
+      },
+      "LinkRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "status",
+          "requested_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Id của yêu cầu liên kết."
+          },
+          "status": {
+            "$ref": "#/components/schemas/LinkRequestStatus"
+          },
+          "requested_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Thời điểm server tạo yêu cầu (RFC 3339, có offset)."
+          }
+        },
+        "description": "Yêu cầu liên kết của người gọi. Cố ý **không** chứa id, tên, email, ảnh hay bất kỳ thông tin hồ sơ nào của người bệnh (QD-34)."
       }
     },
     "responses": {
@@ -6308,6 +6467,143 @@
               "unavailable": {
                 "value": {
                   "detail": "link_code_unavailable"
+                }
+              }
+            }
+          }
+        }
+      },
+      "LinkCodeForbidden": {
+        "description": "`detail`:\n- `family_sharing_consent_required`: người gọi chưa đồng ý (hoặc đã rút) `family_sharing` (BS-05). Client hiện màn đồng ý chia sẻ, gọi `POST /consents` với `purpose = family_sharing`, rồi gọi lại; request kế tiếp sau khi đồng ý thành công sẽ được phép.\n- `khong_co_quyen`: tài khoản admin (QD-44).\n\nKhông có gì được ghi, kể cả mã. Không ghi nhật ký truy cập vì không chạm dữ liệu sức khỏe.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "examples": {
+              "consent_required": {
+                "value": {
+                  "detail": "family_sharing_consent_required"
+                }
+              },
+              "no_access": {
+                "value": {
+                  "detail": "khong_co_quyen"
+                }
+              }
+            }
+          }
+        }
+      },
+      "LinkCodeNotFound": {
+        "description": "`detail` = `link_code_not_found`: không có người bệnh nào nhận yêu cầu bằng mã này. Gồm cả trường hợp mã có thật nhưng người bệnh chưa đồng ý (hoặc đã rút) `family_sharing`; hai trường hợp trả giống hệt nhau để không lộ trạng thái consent (QD-34, BS-05).\n\nĐược tính là **một lần nhập sai** cho chống dò mã. Không có gì khác được ghi.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "examples": {
+              "not_found": {
+                "value": {
+                  "detail": "link_code_not_found"
+                }
+              }
+            }
+          }
+        }
+      },
+      "LinkRequestConflict": {
+        "description": "Cặp (người bệnh, người gọi) đã có yêu cầu hoặc liên kết còn hiệu lực. Không có gì được ghi, không tính lần nhập sai.\n- `link_request_pending`: đã có yêu cầu đang chờ người bệnh chấp thuận (mỗi cặp tối đa một). Client coi như đã gửi rồi và hiện màn chờ.\n- `already_linked`: đã liên kết (`active`).",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "examples": {
+              "pending": {
+                "value": {
+                  "detail": "link_request_pending"
+                }
+              },
+              "linked": {
+                "value": {
+                  "detail": "already_linked"
+                }
+              }
+            }
+          }
+        }
+      },
+      "LinkRequestUnprocessable": {
+        "description": "Dữ liệu không hợp lệ; không có gì được ghi, không tính lần nhập sai.\n\n- Sai cấu trúc hoặc ràng buộc field (thiếu `client_uuid` / `code`, sai kiểu, field lạ, `code` sai định dạng sau khi chuẩn hóa): `ValidationError`.\n- `self_link_not_allowed`: mã là của chính người gọi.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              ]
+            },
+            "examples": {
+              "field": {
+                "summary": "Mã sai định dạng",
+                "value": {
+                  "detail": [
+                    {
+                      "loc": [
+                        "body",
+                        "code"
+                      ],
+                      "msg": "String should match pattern '^[A-HJKMNP-Z2-9]{10}$'",
+                      "type": "string_pattern_mismatch"
+                    }
+                  ]
+                }
+              },
+              "self": {
+                "summary": "Mã của chính mình",
+                "value": {
+                  "detail": "self_link_not_allowed"
+                }
+              }
+            }
+          }
+        }
+      },
+      "LinkRequestRateLimited": {
+        "description": "Tạm thời không gửi được yêu cầu; không có gì được ghi. Luôn có header `Retry-After` (giây); client đếm ngược theo giá trị này và không tự gửi lại trước khi hết.\n- `link_request_locked`: người gọi bị khóa 15 phút vì nhập sai mã nhiều lần (QD-34). Trong lúc khóa, mọi mã (kể cả mã đúng) đều nhận lỗi này.\n- `link_request_daily_limit`: người gọi đã tạo đủ 10 yêu cầu trong ngày (giờ `Asia/Ho_Chi_Minh`); `Retry-After` tính tới 00:00 hôm sau.\n- `link_request_cooldown`: người bệnh này đã từ chối người gọi 5 lần liên tiếp; người gọi không gửi được cho người bệnh này trong 24 giờ kể từ lần từ chối thứ 5 (BS-04). Gửi cho người bệnh khác vẫn được.",
+        "headers": {
+          "Retry-After": {
+            "description": "Số giây còn phải chờ trước khi gửi lại có thể thành công (số nguyên dương).",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "examples": {
+              "locked": {
+                "value": {
+                  "detail": "link_request_locked"
+                }
+              },
+              "daily_limit": {
+                "value": {
+                  "detail": "link_request_daily_limit"
+                }
+              },
+              "cooldown": {
+                "value": {
+                  "detail": "link_request_cooldown"
                 }
               }
             }
