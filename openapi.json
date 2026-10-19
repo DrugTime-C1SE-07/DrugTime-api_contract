@@ -3,7 +3,7 @@
   "info": {
     "title": "DrugTime API",
     "version": "0.1.0",
-    "description": "Hợp đồng API giữa Backend API và các client (Mobile App, Admin Web).\n\nQuy ước chung:\n- Xác thực bằng header `Authorization: Bearer <token>`, trong đó token là **app session token** do `/auth` cấp (`session.access_token`). Token do Supabase Auth cấp không được chấp nhận làm bearer (401). Phiên `mobile` sống 10 ngày, không có refresh: hết hạn thì đăng nhập lại. Phiên `admin_web` hết hạn sau 20 phút kể từ lần cấp gần nhất; gia hạn bằng `POST /auth/admin/session/refresh`.\n- Thời điểm dùng RFC 3339 / ISO 8601 có offset. Giờ uống (`HH:MM`) là giờ địa phương Asia/Ho_Chi_Minh.\n- Lỗi có body `{\"detail\": ...}`. Với 403, 404, 429, 503 và lỗi quy tắc nghiệp vụ 422, `detail` là một chuỗi mã ổn định (snake_case) để client so khớp. Với lỗi sai cấu trúc request 422, `detail` là mảng lỗi theo từng field (định dạng mặc định của FastAPI). Với 401, `detail` là câu mô tả, client không so khớp nội dung.\n- Endpoint chạm dữ liệu sức khỏe kiểm quyền và consent ở mỗi request; truy cập bị từ chối trả 403 và được ghi vào nhật ký truy cập.\n- Endpoint trả danh sách bọc trong object `{\"items\": [...]}` để sau này thêm phân trang hoặc metadata mà không phá vỡ client."
+    "description": "Hợp đồng API giữa Backend API và các client (Mobile App, Admin Web).\n\nQuy ước chung:\n- Xác thực bằng header `Authorization: Bearer <token>`, trong đó token là **app session token** do `/auth` cấp (`session.access_token`). Token do Supabase Auth cấp không được chấp nhận làm bearer (401). Phiên `mobile` sống 10 ngày, không có refresh: hết hạn thì đăng nhập lại. Phiên `admin_web` hết hạn sau 20 phút kể từ lần cấp gần nhất; gia hạn bằng `POST /auth/admin/session/refresh`.\n- Thời điểm dùng RFC 3339 / ISO 8601 có offset. Giờ uống (`HH:MM`) là giờ địa phương Asia/Ho_Chi_Minh.\n- Lỗi có body `{\"detail\": ...}`. Với 403, 404, 409, 429, 503 và lỗi quy tắc nghiệp vụ 422, `detail` là một chuỗi mã ổn định (snake_case) để client so khớp. Với lỗi sai cấu trúc request 422, `detail` là mảng lỗi theo từng field (định dạng mặc định của FastAPI). Với 401, `detail` là câu mô tả, client không so khớp nội dung.\n- Endpoint chạm dữ liệu sức khỏe kiểm quyền và consent ở mỗi request; truy cập bị từ chối trả 403 và được ghi vào nhật ký truy cập.\n- Endpoint trả danh sách bọc trong object `{\"items\": [...]}` để sau này thêm phân trang hoặc metadata mà không phá vỡ client.\n- Endpoint có phân trang dùng **con trỏ**: query `limit` (số phần tử tối đa của trang) và `cursor` (bỏ trống ở trang đầu); response có `next_cursor`, là `null` ở trang cuối. Muốn tải trang kế thì gửi lại đúng `next_cursor` nhận được. Con trỏ là chuỗi mờ: client không đọc, không tự tạo hay sửa. Con trỏ hỏng hoặc không thuộc endpoint/tham số này trả 422 `invalid_cursor`. Phần tử đã trả ở trang trước không lặp lại ở trang sau.\n- Giai đoạn 1 admin **không** đọc hay ghi dữ liệu sức khỏe của người bệnh (QD-32): mọi endpoint dữ liệu sức khỏe trả 403 `khong_co_quyen` cho admin và ghi nhật ký `denied`.\n- Ngoại lệ phân trang cho **danh sách admin** (`/admin/...`): dùng `skip` (số phần tử bỏ qua, mặc định 0) và `limit`; response có `items` và `total` (tổng số phần tử khớp bộ lọc, không tính phân trang), để bảng quản trị hiện số trang. Thứ tự sắp xếp của mỗi endpoint được ghi trong endpoint đó.\n- Endpoint `/admin/...` chỉ dành cho tài khoản admin (QD-44): thiếu hoặc sai token trả 401; tài khoản không phải admin trả 403 `admin_only`. Danh mục quy tắc tương tác không phải dữ liệu sức khỏe của người bệnh nên không ghi nhật ký truy cập."
   },
   "tags": [
     {
@@ -24,7 +24,11 @@
     },
     {
       "name": "family",
-      "description": "Yêu cầu liên kết và xác nhận chia sẻ theo từng người thân."
+      "description": "Liên kết người bệnh với người thân: mã liên kết, yêu cầu liên kết, chia sẻ dữ liệu."
+    },
+    {
+      "name": "interaction",
+      "description": "Danh mục quy tắc tương tác thuốc-thuốc và thuốc-thực phẩm (admin), có phiên bản."
     }
   ],
   "paths": {
@@ -2854,7 +2858,19 @@
             "$ref": "#/components/responses/InteractionUnprocessable"
           }
         }
-      }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "Mã quy tắc.",
+          "schema": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      ]
     },
     "/admin/drug-interactions/{id}/versions": {
       "get": {
@@ -2981,7 +2997,19 @@
             "$ref": "#/components/responses/InteractionRuleHistoryNotFound"
           }
         }
-      }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "Mã quy tắc.",
+          "schema": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      ]
     },
     "/admin/drug-interaction-versions/{version_id}": {
       "get": {
@@ -3071,7 +3099,19 @@
             "$ref": "#/components/responses/InteractionVersionNotFound"
           }
         }
-      }
+      },
+      "parameters": [
+        {
+          "name": "version_id",
+          "in": "path",
+          "required": true,
+          "description": "Id phiên bản (ví dụ id được lưu trong một cảnh báo cũ).",
+          "schema": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      ]
     },
     "/admin/drug-food-interactions": {
       "post": {
@@ -3484,7 +3524,19 @@
             "$ref": "#/components/responses/FoodInteractionUnprocessable"
           }
         }
-      }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "Mã quy tắc.",
+          "schema": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      ]
     },
     "/admin/drug-food-interactions/{id}/versions": {
       "get": {
@@ -3576,7 +3628,19 @@
             "$ref": "#/components/responses/InteractionRuleHistoryNotFound"
           }
         }
-      }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "Mã quy tắc.",
+          "schema": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      ]
     },
     "/admin/drug-food-interaction-versions/{version_id}": {
       "get": {
@@ -3639,7 +3703,19 @@
             "$ref": "#/components/responses/InteractionVersionNotFound"
           }
         }
-      }
+      },
+      "parameters": [
+        {
+          "name": "version_id",
+          "in": "path",
+          "required": true,
+          "description": "Id phiên bản.",
+          "schema": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      ]
     },
     "/admin/active-ingredients": {
       "get": {
@@ -3872,7 +3948,20 @@
             "$ref": "#/components/responses/ScheduleUnprocessableEntity"
           }
         }
-      }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "Id thuốc của người bệnh (`UserMedication.id`), không phải id danh mục.",
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          }
+        }
+      ]
     },
     "/medications/{id}/schedules/{schedule_id}": {
       "delete": {
@@ -4127,7 +4216,31 @@
             "$ref": "#/components/responses/ScheduleUnprocessableEntity"
           }
         }
-      }
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "Id thuốc của người bệnh (`UserMedication.id`), không phải id danh mục.",
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          }
+        },
+        {
+          "name": "schedule_id",
+          "in": "path",
+          "required": true,
+          "description": "Id lịch (`MedicationSchedule.id`). Phải là lịch **đang mở** của thuốc `id`.",
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          }
+        }
+      ]
     },
     "/patients/{patient_id}/schedules": {
       "get": {
@@ -4423,7 +4536,19 @@
             }
           }
         ]
-      }
+      },
+      "parameters": [
+        {
+          "name": "patient_id",
+          "in": "path",
+          "required": true,
+          "description": "Id tài khoản người bệnh (UUID). Sai định dạng trả 422 `ValidationError`.",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
     },
     "/conditions": {
       "get": {
@@ -7348,7 +7473,7 @@
         }
       },
       "Forbidden": {
-        "description": "Không có quyền. `detail`:\n- `consent_revoked`: người bệnh tự truy cập nhưng chưa có (hoặc đã rút) consent `health_data`. Client mời người dùng đồng ý rồi gọi `POST /consents` với `purpose = health_data`; request kế tiếp sau khi đồng ý thành công sẽ được phép.\n- `khong_co_quyen`: người khác không có quyền với thuốc này, hoặc người thân/admin cố ghi. Lần truy cập được ghi `denied` vào nhật ký truy cập.",
+        "description": "Không có quyền. `detail`:\n- `consent_revoked`: người bệnh tự truy cập nhưng chưa có (hoặc đã rút) consent `health_data`. Client mời người dùng đồng ý rồi gọi `POST /consents` với `purpose = health_data`; request kế tiếp sau khi đồng ý thành công sẽ được phép.\n- `khong_co_quyen`: người khác không có quyền với thuốc hoặc lịch uống của người bệnh này (kể cả **admin**, QD-32), hoặc người thân cố ghi. Lần truy cập được ghi `denied` vào nhật ký truy cập.",
         "content": {
           "application/json": {
             "schema": {
