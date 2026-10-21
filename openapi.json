@@ -3,7 +3,7 @@
   "info": {
     "title": "DrugTime API",
     "version": "0.1.0",
-    "description": "Hợp đồng API giữa Backend API và các client (Mobile App, Admin Web).\n\nQuy ước chung:\n- Xác thực bằng header `Authorization: Bearer <token>`, trong đó token là **app session token** do `/auth` cấp (`session.access_token`). Token do Supabase Auth cấp không được chấp nhận làm bearer (401). Phiên `mobile` sống 10 ngày, không có refresh: hết hạn thì đăng nhập lại. Phiên `admin_web` hết hạn sau 20 phút kể từ lần cấp gần nhất; gia hạn bằng `POST /auth/admin/session/refresh`.\n- Thời điểm dùng RFC 3339 / ISO 8601 có offset. Giờ uống (`HH:MM`) là giờ địa phương Asia/Ho_Chi_Minh.\n- Lỗi có body `{\"detail\": ...}`. Với 403, 404, 409, 429, 503 và lỗi quy tắc nghiệp vụ 422, `detail` là một chuỗi mã ổn định (snake_case) để client so khớp. Với lỗi sai cấu trúc request 422, `detail` là mảng lỗi theo từng field (định dạng mặc định của FastAPI). Với 401, `detail` là câu mô tả, client không so khớp nội dung.\n- Endpoint chạm dữ liệu sức khỏe kiểm quyền và consent ở mỗi request; truy cập bị từ chối trả 403 và được ghi vào nhật ký truy cập.\n- Endpoint trả danh sách bọc trong object `{\"items\": [...]}` để sau này thêm phân trang hoặc metadata mà không phá vỡ client.\n- Endpoint có phân trang dùng **con trỏ**: query `limit` (số phần tử tối đa của trang) và `cursor` (bỏ trống ở trang đầu); response có `next_cursor`, là `null` ở trang cuối. Muốn tải trang kế thì gửi lại đúng `next_cursor` nhận được. Con trỏ là chuỗi mờ: client không đọc, không tự tạo hay sửa. Con trỏ hỏng hoặc không thuộc endpoint/tham số này trả 422 `invalid_cursor`. Phần tử đã trả ở trang trước không lặp lại ở trang sau.\n- Giai đoạn 1 admin **không** đọc hay ghi dữ liệu sức khỏe của người bệnh (QD-32): mọi endpoint dữ liệu sức khỏe trả 403 `khong_co_quyen` cho admin và ghi nhật ký `denied`.\n- Ngoại lệ phân trang cho **danh sách admin** (`/admin/...`): dùng `skip` (số phần tử bỏ qua, mặc định 0) và `limit`; response có `items` và `total` (tổng số phần tử khớp bộ lọc, không tính phân trang), để bảng quản trị hiện số trang. Thứ tự sắp xếp của mỗi endpoint được ghi trong endpoint đó.\n- Endpoint `/admin/...` chỉ dành cho tài khoản admin (QD-44): thiếu hoặc sai token trả 401; tài khoản không phải admin trả 403 `admin_only`. Danh mục quy tắc tương tác không phải dữ liệu sức khỏe của người bệnh nên không ghi nhật ký truy cập."
+    "description": "Hợp đồng API giữa Backend API và các client (Mobile App, Admin Web).\n\nQuy ước chung:\n- Xác thực bằng header `Authorization: Bearer <token>`, trong đó token là **app session token** do `/auth` cấp (`session.access_token`). Token do Supabase Auth cấp không được chấp nhận làm bearer (401). Phiên `mobile` sống 10 ngày, không có refresh: hết hạn thì đăng nhập lại. Phiên `admin_web` hết hạn sau 20 phút kể từ lần cấp gần nhất; gia hạn bằng `POST /auth/admin/session/refresh`.\n- Thời điểm dùng RFC 3339 / ISO 8601 có offset. Giờ uống (`HH:MM`) là giờ địa phương Asia/Ho_Chi_Minh.\n- Lỗi có body `{\"detail\": ...}`. Với 403, 404, 409, 429, 503 và lỗi quy tắc nghiệp vụ 422, `detail` là một chuỗi mã ổn định (snake_case) để client so khớp. Với lỗi sai cấu trúc request 422, `detail` là mảng lỗi theo từng field (định dạng mặc định của FastAPI). Với 401, `detail` là câu mô tả, client không so khớp nội dung.\n- Endpoint chạm dữ liệu sức khỏe kiểm quyền và consent ở mỗi request; truy cập bị từ chối trả 403 và được ghi vào nhật ký truy cập.\n- Endpoint trả danh sách bọc trong object `{\"items\": [...]}` để sau này thêm phân trang hoặc metadata mà không phá vỡ client.\n- Endpoint có phân trang dùng **con trỏ**: query `limit` (số phần tử tối đa của trang) và `cursor` (bỏ trống ở trang đầu); response có `next_cursor`, là `null` ở trang cuối. Muốn tải trang kế thì gửi lại đúng `next_cursor` nhận được. Con trỏ là chuỗi mờ: client không đọc, không tự tạo hay sửa. Con trỏ hỏng hoặc không thuộc endpoint/tham số này trả 422 `invalid_cursor`. Phần tử đã trả ở trang trước không lặp lại ở trang sau.\n- Giai đoạn 1 admin **không** đọc hay ghi dữ liệu sức khỏe của người bệnh (QD-32): mọi endpoint dữ liệu sức khỏe trả 403 `khong_co_quyen` cho admin và ghi nhật ký `denied`.\n- Ngoại lệ phân trang cho **danh sách admin** (`/admin/...`): dùng `skip` (số phần tử bỏ qua, mặc định 0) và `limit`; response có `items` và `total` (tổng số phần tử khớp bộ lọc, không tính phân trang), để bảng quản trị hiện số trang. Thứ tự sắp xếp của mỗi endpoint được ghi trong endpoint đó.\n- Endpoint `/admin/...` chỉ dành cho tài khoản admin (QD-44): thiếu hoặc sai token trả 401; tài khoản không phải admin trả 403 `admin_only`. Danh mục quy tắc tương tác không phải dữ liệu sức khỏe của người bệnh nên không ghi nhật ký truy cập.\n- Ngoại lệ tương thích cho GET /notifications đang tồn tại: dùng limit/offset và items/total/unread_count. Chỉ endpoint này dùng offset; không đổi quy ước con trỏ của endpoint khác."
   },
   "tags": [
     {
@@ -29,6 +29,10 @@
     {
       "name": "family",
       "description": "Liên kết người bệnh với người thân: mã liên kết, yêu cầu liên kết, chia sẻ dữ liệu."
+    },
+    {
+      "name": "notification",
+      "description": "Hộp thư cảnh báo của chính người gọi; dữ liệu patient kiểm quyền hiện hành qua PEP."
     }
   ],
   "paths": {
@@ -4169,6 +4173,752 @@
           }
         }
       }
+    },
+    "/notifications": {
+      "get": {
+        "tags": [
+          "notification"
+        ],
+        "operationId": "listMyNotifications",
+        "summary": "Lấy hộp thư đã lọc theo quyền hiện hành",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Chỉ xử lý notification có user_id là người gọi. Lấy patient từ metadata notification, không nhận patient_id từ client. Trước khi đọc nội dung patient/thuốc/giờ hoặc cập nhật trạng thái, dùng PEP hiện có resolve_access → Consent Guard → Access Log Writer với scope ADHERENCE, action READ: is_read là metadata hộp thư người nhận, không phải quyền ghi dữ liệu liều. Liên kết active, sharing_enabled, consent health_data và family_sharing phải hợp lệ ở mỗi request. Không cache quyết định; admin bị từ chối theo QD-32. Allowed chỉ trả sau khi access log commit thành công; denied ghi transaction riêng. Lỗi kiểm quyền/ghi log trả 503 notification_access_unavailable, không trả dữ liệu hoặc đổi trạng thái. Response thành công và lỗi có Cache-Control: no-store; Mobile chỉ giữ dữ liệu sức khỏe trong bộ nhớ phiên, xóa khi vào nền, mất mạng, logout, đổi tài khoản hoặc 403; khi trở lại tải và kiểm quyền lại. \n\nKiểm PEP cho mỗi patient có trong hộp thư, gồm patient liên quan số đếm. Patient bị từ chối được audit denied và loại khỏi items, total, unread_count; không trả số item bị loại. Chỉ bỏ qua Forbidden sau khi audit denied thành công, không nuốt lỗi audit/DB. Lọc quyền trước is_read và phân trang; audit allowed/denied tối thiểu một lần mỗi patient/request, không theo từng item trùng patient. Item không còn patient hợp lệ không được trả/đếm. Tất cả bị lọc hoặc hộp thư trống: 200 với items=[], total=0, unread_count=0. Admin: 403.\n\nGiữ limit/offset route đang chạy; sắp created_at DESC, id DESC. Offset tính trên tập được phép đã lọc is_read. Thay đổi inbox giữa hai request có thể dịch trang; Mobile refresh từ offset=0 và khử trùng theo id. Không bảo đảm snapshot xuyên request. GET không đổi is_read.",
+        "parameters": [
+          {
+            "name": "is_read",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Bỏ trống: tất cả; true: đã đọc; false: chưa đọc. Không ảnh hưởng unread_count."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Danh sách và số đếm cùng tập quyền hiện hành; không lộ metadata patient bị rút quyền.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationList"
+                },
+                "examples": {
+                  "first_page": {
+                    "value": {
+                      "items": [
+                        {
+                          "id": 501,
+                          "type": "canh_bao_bo_lo_lieu_nguoi_than",
+                          "title": "DrugTime",
+                          "content": "Chưa ghi nhận liều thuốc đúng giờ",
+                          "is_read": false,
+                          "about_patient_user_id": "8d3f2c1a-5b6e-4f70-9a81-2c3d4e5f6a7b",
+                          "about_patient_name": "Nguyễn Thị Lan",
+                          "created_at": "2026-10-21T08:15:00+07:00",
+                          "medication_name": "Amlodipin 5mg",
+                          "scheduled_at": "2026-10-21T08:00:00+07:00"
+                        }
+                      ],
+                      "total": 1,
+                      "unread_count": 1
+                    }
+                  },
+                  "empty_or_revoked": {
+                    "value": {
+                      "items": [],
+                      "total": 0,
+                      "unread_count": 0
+                    }
+                  },
+                  "legacy": {
+                    "value": {
+                      "items": [
+                        {
+                          "id": 500,
+                          "type": "canh_bao_bo_lo_lieu_nguoi_than",
+                          "title": "DrugTime",
+                          "content": "Chưa ghi nhận liều thuốc đúng giờ",
+                          "is_read": false,
+                          "about_patient_user_id": "8d3f2c1a-5b6e-4f70-9a81-2c3d4e5f6a7b",
+                          "about_patient_name": "Nguyễn Thị Lan",
+                          "created_at": "2026-10-21T08:15:00+07:00",
+                          "medication_name": null,
+                          "scheduled_at": null
+                        }
+                      ],
+                      "total": 1,
+                      "unread_count": 1
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "description": "Không cache dữ liệu hoặc lỗi của inbox.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthUnauthorized"
+          },
+          "403": {
+            "description": "Không có quyền hiện hành; không trả dữ liệu hoặc cập nhật notification. PEP ghi denied ở transaction riêng.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "khong_co_quyen": {
+                    "value": {
+                      "detail": "khong_co_quyen"
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "description": "Không cache dữ liệu hoặc lỗi của inbox.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Không kiểm quyền hoặc ghi access log được: fail-closed, không trả dữ liệu sức khỏe hoặc cập nhật is_read. Client có thể thử lại; không dùng dữ liệu cũ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "notification_access_unavailable": {
+                    "value": {
+                      "detail": "notification_access_unavailable"
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "description": "Không cache dữ liệu hoặc lỗi của inbox.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "is_read không phải boolean, limit/offset sai ràng buộc.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                "examples": {
+                  "invalid_limit": {
+                    "value": {
+                      "detail": [
+                        {
+                          "loc": [
+                            "query",
+                            "limit"
+                          ],
+                          "msg": "Input should be less than or equal to 100",
+                          "type": "less_than_equal"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "description": "Không cache dữ liệu hoặc lỗi của inbox.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/notifications/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "description": "ID hộp thư nhận từ danh sách hoặc data.notification_id trong push. Chưa tin ID/patient từ payload trước khi API cho phép."
+        }
+      ],
+      "get": {
+        "tags": [
+          "notification"
+        ],
+        "operationId": "getMyNotification",
+        "summary": "Đọc chi tiết cảnh báo sau khi mở push",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Chỉ xử lý notification có user_id là người gọi. Lấy patient từ metadata notification, không nhận patient_id từ client. Trước khi đọc nội dung patient/thuốc/giờ hoặc cập nhật trạng thái, dùng PEP hiện có resolve_access → Consent Guard → Access Log Writer với scope ADHERENCE, action READ: is_read là metadata hộp thư người nhận, không phải quyền ghi dữ liệu liều. Liên kết active, sharing_enabled, consent health_data và family_sharing phải hợp lệ ở mỗi request. Không cache quyết định; admin bị từ chối theo QD-32. Allowed chỉ trả sau khi access log commit thành công; denied ghi transaction riêng. Lỗi kiểm quyền/ghi log trả 503 notification_access_unavailable, không trả dữ liệu hoặc đổi trạng thái. Response thành công và lỗi có Cache-Control: no-store; Mobile chỉ giữ dữ liệu sức khỏe trong bộ nhớ phiên, xóa khi vào nền, mất mạng, logout, đổi tài khoản hoặc 403; khi trở lại tải và kiểm quyền lại. \n\nĐúng người nhận nhưng mất quyền patient: 403 khong_co_quyen và audit denied. ID không thuộc người gọi/không tồn tại: 404 notification_not_found trước khi tải dữ liệu patient. Không tự đánh dấu đã đọc. Client điều hướng patient bằng about_patient_user_id trong response, không suy từ payload.",
+        "responses": {
+          "200": {
+            "description": "Chi tiết cảnh báo được phép tại request này.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationItem"
+                },
+                "examples": {
+                  "notification": {
+                    "value": {
+                      "id": 501,
+                      "type": "canh_bao_bo_lo_lieu_nguoi_than",
+                      "title": "DrugTime",
+                      "content": "Chưa ghi nhận liều thuốc đúng giờ",
+                      "is_read": false,
+                      "about_patient_user_id": "8d3f2c1a-5b6e-4f70-9a81-2c3d4e5f6a7b",
+                      "about_patient_name": "Nguyễn Thị Lan",
+                      "created_at": "2026-10-21T08:15:00+07:00",
+                      "medication_name": "Amlodipin 5mg",
+                      "scheduled_at": "2026-10-21T08:00:00+07:00"
+                    }
+                  },
+                  "legacy": {
+                    "value": {
+                      "id": 500,
+                      "type": "canh_bao_bo_lo_lieu_nguoi_than",
+                      "title": "DrugTime",
+                      "content": "Chưa ghi nhận liều thuốc đúng giờ",
+                      "is_read": false,
+                      "about_patient_user_id": "8d3f2c1a-5b6e-4f70-9a81-2c3d4e5f6a7b",
+                      "about_patient_name": "Nguyễn Thị Lan",
+                      "created_at": "2026-10-21T08:15:00+07:00",
+                      "medication_name": null,
+                      "scheduled_at": null
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "description": "Không cache dữ liệu hoặc lỗi của inbox.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthUnauthorized"
+          },
+          "403": {
+            "description": "Không có quyền hiện hành; không trả dữ liệu hoặc cập nhật notification. PEP ghi denied ở transaction riêng.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "khong_co_quyen": {
+                    "value": {
+                      "detail": "khong_co_quyen"
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "description": "Không cache dữ liệu hoặc lỗi của inbox.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không có notification id này trong hộp thư của người gọi, gồm id thuộc tài khoản khác. Không trả metadata người nhận khác.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "notification_not_found": {
+                    "value": {
+                      "detail": "notification_not_found"
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "description": "Không cache dữ liệu hoặc lỗi của inbox.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Sai cấu trúc hoặc ràng buộc field; không có cập nhật. Body theo ValidationError hiện có.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                "examples": {
+                  "invalid_id": {
+                    "value": {
+                      "detail": [
+                        {
+                          "loc": [
+                            "path",
+                            "id"
+                          ],
+                          "msg": "Input should be greater than or equal to 1",
+                          "type": "greater_than_equal"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "description": "Không cache dữ liệu hoặc lỗi của inbox.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Không kiểm quyền hoặc ghi access log được: fail-closed, không trả dữ liệu sức khỏe hoặc cập nhật is_read. Client có thể thử lại; không dùng dữ liệu cũ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "notification_access_unavailable": {
+                    "value": {
+                      "detail": "notification_access_unavailable"
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "description": "Không cache dữ liệu hoặc lỗi của inbox.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "notification"
+        ],
+        "operationId": "updateNotificationStatus",
+        "summary": "Đặt trạng thái đã đọc của cảnh báo",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Chỉ xử lý notification có user_id là người gọi. Lấy patient từ metadata notification, không nhận patient_id từ client. Trước khi đọc nội dung patient/thuốc/giờ hoặc cập nhật trạng thái, dùng PEP hiện có resolve_access → Consent Guard → Access Log Writer với scope ADHERENCE, action READ: is_read là metadata hộp thư người nhận, không phải quyền ghi dữ liệu liều. Liên kết active, sharing_enabled, consent health_data và family_sharing phải hợp lệ ở mỗi request. Không cache quyết định; admin bị từ chối theo QD-32. Allowed chỉ trả sau khi access log commit thành công; denied ghi transaction riêng. Lỗi kiểm quyền/ghi log trả 503 notification_access_unavailable, không trả dữ liệu hoặc đổi trạng thái. Response thành công và lỗi có Cache-Control: no-store; Mobile chỉ giữ dữ liệu sức khỏe trong bộ nhớ phiên, xóa khi vào nền, mất mạng, logout, đổi tài khoản hoặc 403; khi trở lại tải và kiểm quyền lại. \n\nGiữ is_read boolean hiện có (true/false). Chỉ cập nhật metadata notification thuộc người gọi sau PEP. Gửi lặp cùng id và is_read trả 200 cùng trạng thái, không tạo notification/dose log hay giảm badge hai lần. API không trả unread_count; sau 200 client tải lại GET /notifications lấy badge chính xác. Lỗi: không cập nhật UI như thành công; 403 xóa dữ liệu đã mất quyền. Quyền bị thu hồi: 403; ID không thuộc người gọi/không tồn tại: 404. Không có xung đột nghiệp vụ 409 cho thao tác đặt trạng thái.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationUpdateRequest"
+              },
+              "examples": {
+                "read": {
+                  "value": {
+                    "is_read": true
+                  }
+                },
+                "unread": {
+                  "value": {
+                    "is_read": false
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Notification sau khi lưu và audit thành công.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationItem"
+                },
+                "examples": {
+                  "read": {
+                    "value": {
+                      "id": 501,
+                      "type": "canh_bao_bo_lo_lieu_nguoi_than",
+                      "title": "DrugTime",
+                      "content": "Chưa ghi nhận liều thuốc đúng giờ",
+                      "is_read": true,
+                      "about_patient_user_id": "8d3f2c1a-5b6e-4f70-9a81-2c3d4e5f6a7b",
+                      "about_patient_name": "Nguyễn Thị Lan",
+                      "created_at": "2026-10-21T08:15:00+07:00",
+                      "medication_name": "Amlodipin 5mg",
+                      "scheduled_at": "2026-10-21T08:00:00+07:00"
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "description": "Không cache dữ liệu hoặc lỗi của inbox.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthUnauthorized"
+          },
+          "403": {
+            "description": "Không có quyền hiện hành; không trả dữ liệu hoặc cập nhật notification. PEP ghi denied ở transaction riêng.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "khong_co_quyen": {
+                    "value": {
+                      "detail": "khong_co_quyen"
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "description": "Không cache dữ liệu hoặc lỗi của inbox.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không có notification id này trong hộp thư của người gọi, gồm id thuộc tài khoản khác. Không trả metadata người nhận khác.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "notification_not_found": {
+                    "value": {
+                      "detail": "notification_not_found"
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "description": "Không cache dữ liệu hoặc lỗi của inbox.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Sai cấu trúc hoặc ràng buộc field; không có cập nhật. Body theo ValidationError hiện có.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                "examples": {
+                  "invalid_id": {
+                    "value": {
+                      "detail": [
+                        {
+                          "loc": [
+                            "path",
+                            "id"
+                          ],
+                          "msg": "Input should be greater than or equal to 1",
+                          "type": "greater_than_equal"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "description": "Không cache dữ liệu hoặc lỗi của inbox.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Không kiểm quyền hoặc ghi access log được: fail-closed, không trả dữ liệu sức khỏe hoặc cập nhật is_read. Client có thể thử lại; không dùng dữ liệu cũ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "notification_access_unavailable": {
+                    "value": {
+                      "detail": "notification_access_unavailable"
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "description": "Không cache dữ liệu hoặc lỗi của inbox.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/device-tokens": {
+      "put": {
+        "tags": [
+          "identity"
+        ],
+        "operationId": "registerMyDeviceToken",
+        "summary": "Đăng ký hoặc đổi FCM token Android của chính tài khoản",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Bearer app session user cá nhân; không nhận user_id/patient_id từ client. Chỉ Android; iOS không gọi. Dữ liệu thiết bị không phải dữ liệu sức khỏe, không gọi PEP/ghi access_logs.\n\nUpsert theo fcm_token duy nhất toàn hệ thống. Cùng token/cùng user gửi lại: 204, không trùng bản ghi. Token thuộc user khác: 409 device_token_in_use, không chuyển chủ và không ghi gì. Khi refresh, previous_fcm_token tùy chọn được xóa nếu thuộc chính user và khác token mới, trong cùng transaction; token cũ thiếu/đã xóa/thuộc user khác không làm lỗi và không ảnh hưởng user khác. Nếu gắn mới thất bại, giữ token cũ. Hai tài khoản chạy đua đăng ký cùng token: chỉ một chủ; bên thua 409. Nhiều thiết bị dùng token khác nhau. Không trả/log token. Không gọi FCM xác minh token ở endpoint này.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceTokenRegistrationRequest"
+              },
+              "examples": {
+                "register": {
+                  "value": {
+                    "fcm_token": "EXAMPLE_ANDROID_FCM_TOKEN",
+                    "platform": "android"
+                  }
+                },
+                "refresh": {
+                  "value": {
+                    "fcm_token": "EXAMPLE_NEW_FCM_TOKEN",
+                    "platform": "android",
+                    "previous_fcm_token": "EXAMPLE_ANDROID_FCM_TOKEN"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Đã gắn token cho user hiện hành; không có body."
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/PersonalAccountForbidden"
+          },
+          "422": {
+            "description": "Thiếu/sai field, platform khác android hoặc token có khoảng trắng: ValidationError. Không ghi token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                "examples": {
+                  "unsupported_platform": {
+                    "value": {
+                      "detail": [
+                        {
+                          "loc": [
+                            "body",
+                            "platform"
+                          ],
+                          "msg": "Input should be 'android'",
+                          "type": "literal_error"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Token thuộc tài khoản khác; gỡ bằng session chủ cũ hoặc tạo token FCM mới trên thiết bị. Không tiết lộ chủ cũ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "device_token_in_use": {
+                    "value": {
+                      "detail": "device_token_in_use"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "identity"
+        ],
+        "operationId": "unregisterMyDeviceToken",
+        "summary": "Gỡ FCM token trước logout hoặc đổi tài khoản",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Gửi JSON body fcm_token qua HTTPS; không đặt token trong URL/query. Chỉ xóa token thuộc chính user. Token không tồn tại hoặc thuộc người khác cũng trả 204, không tiết lộ chủ và không xóa token người khác. Gửi lặp idempotent, không dùng client_uuid. Admin 403, thiếu/sai session 401.\n\nMobile hoàn tất gỡ bằng session cũ trước khi xóa credential/đổi tài khoản; mất mạng thì retry, chưa coi gỡ đăng ký đã thành công. Session cũ hết hạn: không gỡ bằng session user mới; hủy token FCM cũ ở thiết bị và lấy token mới trước khi đăng ký. Không chuyển chủ bằng PUT. Sau DELETE commit, lần dispatch mới không chọn token này cho user cũ; push FCM đã nhận trước đó không thể thu hồi bằng API này. Mobile bỏ qua payload của session cũ và phải GET chi tiết bằng session hiện hành, không dùng push làm dữ liệu patient. Logout/rotation offline và push in-flight cần được kiểm chứng ở plan/test AC8. Không ghi access_logs hoặc log token.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceTokenRemovalRequest"
+              },
+              "example": {
+                "fcm_token": "EXAMPLE_ANDROID_FCM_TOKEN"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Đã gỡ hoặc token không thuộc user; không có body."
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/PersonalAccountForbidden"
+          },
+          "422": {
+            "description": "fcm_token thiếu, rỗng, chứa khoảng trắng hoặc có field lạ: ValidationError.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                "examples": {
+                  "missing_token": {
+                    "value": {
+                      "detail": [
+                        {
+                          "loc": [
+                            "body",
+                            "fcm_token"
+                          ],
+                          "msg": "Field required",
+                          "type": "missing"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -5859,7 +6609,9 @@
           "is_read",
           "about_patient_user_id",
           "about_patient_name",
-          "created_at"
+          "created_at",
+          "medication_name",
+          "scheduled_at"
         ],
         "additionalProperties": false,
         "properties": {
@@ -5902,8 +6654,24 @@
             "type": "string",
             "format": "date-time",
             "description": "Thời điểm tạo thông báo (chuẩn ISO 8601)."
+          },
+          "medication_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1
+          },
+          "scheduled_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Giờ dự kiến của liều trong sự kiện gốc, ISO 8601 có offset; UI hiển thị Asia/Ho_Chi_Minh."
           }
-        }
+        },
+        "description": "Giữ các field hiện có, bổ sung medication_name và scheduled_at. Thuốc/giờ lấy từ sự kiện liều gốc, không suy diễn từ created_at hoặc lịch hiện tại. Bản ghi cũ chưa khôi phục được dữ liệu sự kiện trả null cho hai field mới; client hiện “Không có dữ liệu liều cũ”, không đoán giá trị. Notification tạo mới sau triển khai phải có cả hai field khác null. Thuốc/giờ không nằm trong push."
       },
       "NotificationList": {
         "type": "object",
@@ -5924,12 +6692,12 @@
           "total": {
             "type": "integer",
             "minimum": 0,
-            "description": "Tổng số thông báo phù hợp bộ lọc."
+            "description": "Tổng item được phép sau lọc is_read, trước limit/offset."
           },
           "unread_count": {
             "type": "integer",
             "minimum": 0,
-            "description": "Tổng số thông báo chưa đọc của người dùng."
+            "description": "Tổng item chưa đọc được phép toàn hộp thư; độc lập is_read, limit, offset."
           }
         }
       },
@@ -6001,6 +6769,52 @@
           }
         },
         "description": "Yêu cầu liên kết của người gọi. Cố ý **không** chứa id, tên, email, ảnh hay bất kỳ thông tin hồ sơ nào của người bệnh (QD-34)."
+      },
+      "DeviceTokenRegistrationRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "fcm_token",
+          "platform"
+        ],
+        "properties": {
+          "fcm_token": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^\\S+$",
+            "writeOnly": true,
+            "description": "FCM token opaque, không rỗng/không khoảng trắng; không log hoặc trả token. Ví dụ chỉ là placeholder."
+          },
+          "platform": {
+            "type": "string",
+            "enum": [
+              "android"
+            ]
+          },
+          "previous_fcm_token": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^\\S+$",
+            "writeOnly": true,
+            "description": "Tùy chọn khi refresh. Gỡ token cũ của chính user cùng transaction sau khi gắn token mới thành công; không gỡ token user khác. Bỏ trống khi đăng ký lần đầu."
+          }
+        }
+      },
+      "DeviceTokenRemovalRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "fcm_token"
+        ],
+        "properties": {
+          "fcm_token": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^\\S+$",
+            "writeOnly": true,
+            "description": "FCM token opaque, không rỗng/không khoảng trắng; không log hoặc trả token. Ví dụ chỉ là placeholder."
+          }
+        }
       }
     },
     "responses": {
