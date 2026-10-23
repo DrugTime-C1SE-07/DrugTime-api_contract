@@ -4174,14 +4174,14 @@
         }
       }
     },
-    "/adherence": {
+    "/family/links": {
       "get": {
         "tags": [
-          "adherence"
+          "family"
         ],
-        "operationId": "getAdherenceHistory",
-        "summary": "Lịch sử tuân thủ của chính mình hoặc bệnh nhân đã chia sẻ",
-        "description": "Đọc lịch sử liều theo ngày hoặc thuốc. Không nhận body. Nếu bỏ `patient_id`, lấy chính người gọi. Nếu chọn bệnh nhân khác, mỗi request kiểm liên kết người thân active, `sharing_enabled`, consent `family_sharing` và `health_data` của bệnh nhân từ DB; rút quyền có hiệu lực ở request kế tiếp. Chính chủ cần `health_data`. Admin không được đọc. Truy cập được phép hoặc bị từ chối đối với patient tồn tại đều được audit; patient không tồn tại trả 403 cùng body nhưng không ghi audit vì không có khóa ngoại. Lỗi quyền/audit fail-closed. Không trả dữ liệu sức khỏe khi bị từ chối. Khoảng ngày tính theo Asia/Ho_Chi_Minh, tối đa 90 ngày bao gồm hai đầu; mặc định kết thúc hôm nay và bắt đầu 29 ngày trước ngày kết thúc. Chỉ trả liều đã đến thời điểm `as_of`. Response không cache.",
+        "operationId": "listPendingFamilyLinks",
+        "summary": "Bệnh nhân xem các yêu cầu liên kết đang chờ của chính mình",
+        "description": "Patient được xác định bằng patient_user_id của yêu cầu, không bằng một role cố định trên tài khoản. Mọi phiên app hợp lệ không phải admin có thể xem pending mà chính mình là patient, kể cả tài khoản đang làm người thân của người khác. Admin nhận 403 khong_co_quyen; không có chế độ xem hộ.\n\nBắt buộc query status=pending; chỉ hỗ trợ pending trong endpoint này. Không chấp nhận patient_id, family_user_id, limit, offset, cursor hoặc query lạ/lặp (kể cả status lặp); trả 422 ValidationError. GET không có body. Không nhận patient_id từ client; lọc patient_user_id bằng ID của người gọi từ phiên.\n\nKhông cần consent health_data/family_sharing/terms để xem các yêu cầu của mình. Endpoint chỉ trả metadata quản lý liên kết, không trả dữ liệu sức khỏe; không được buộc đã có active link mới xem pending. Không tự tạo consent, không đổi trạng thái link hoặc bật chia sẻ.\n\nTrả 200 {items: [...]} chứa TOÀN BỘ pending tại lần đọc, sắp requested_at giảm dần rồi link_id giảm dần; không phân trang và không cắt ngầm. Không có yêu cầu thì items=[]. Mỗi item gồm link_id, family_user_id, family_full_name (có thể null), status=pending, requested_at. requested_at là thời điểm tạo pending, hiện tương ứng caregiver_links.linked_at; không phải giờ approve. family_full_name lấy tối thiểu từ identity, không trả thêm email/số điện thoại/avatar/hồ sơ. Trường hợp tên thiếu trả null, không đoán tên hoặc lấy dữ liệu nhạy cảm khác thay thế.\n\nSau approve/reject đã commit, GET mới không trả yêu cầu đó; GET đã đọc snapshot trước khi commit có thể còn thấy, vì vậy client phải xử lý 409 khi thao tác trên danh sách cũ và tải lại. Không cache quyết định phân quyền hoặc danh sách qua request; đọc trạng thái DB hiện tại ở mỗi request.\n\nGhi audit metadata tối thiểu cho lần xem của patient; audit không được chứa tên/hồ sơ/mã liên kết/token. Không ghi audit bền vững hoặc không đọc DB được → 503 service_unavailable, không trả danh sách. Admin bị từ chối ghi denied riêng với chủ thể là chính admin; lỗi ghi denied cũng trả 503. Kỹ thuật audit/enforcement quản lý liên kết thuộc plan, không dùng active-sharing guard để khóa luồng pending. Mọi endpoint y tế vẫn dùng PEP hiện có.",
         "security": [
           {
             "bearerAuth": []
@@ -4189,109 +4189,54 @@
         ],
         "parameters": [
           {
-            "name": "patient_id",
+            "name": "status",
             "in": "query",
-            "required": false,
-            "description": "UUID bệnh nhân; bỏ trống để xem chính mình. UUID khác phải là bệnh nhân đã chia sẻ hợp lệ.",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "from",
-            "in": "query",
-            "required": false,
-            "description": "Ngày đầu, YYYY-MM-DD; mặc định 29 ngày trước `to`.",
-            "schema": {
-              "type": "string",
-              "format": "date"
-            }
-          },
-          {
-            "name": "to",
-            "in": "query",
-            "required": false,
-            "description": "Ngày cuối, YYYY-MM-DD, không sau hôm nay ở Asia/Ho_Chi_Minh; mặc định hôm nay.",
-            "schema": {
-              "type": "string",
-              "format": "date"
-            }
-          },
-          {
-            "name": "group_by",
-            "in": "query",
-            "required": false,
-            "description": "Cách nhóm; mặc định date.",
+            "required": true,
             "schema": {
               "type": "string",
               "enum": [
-                "date",
-                "medication"
-              ],
-              "default": "date"
-            }
+                "pending"
+              ]
+            },
+            "description": "Bắt buộc đúng một giá trị pending; thiếu/sai/lặp hoặc query không khai báo trả 422."
           }
         ],
         "responses": {
           "200": {
-            "description": "Lịch sử của bệnh nhân được phép xem; groups rỗng khi chưa có liều, adherence_rate=null khi counted=0 (kể cả chỉ có liều pending).",
-            "headers": {
-              "Cache-Control": {
-                "description": "Không lưu dữ liệu sức khỏe trong cache.",
-                "schema": {
-                  "type": "string",
-                  "const": "no-store"
-                }
-              }
-            },
+            "description": "Danh sách pending của chính patient; không có thì items rỗng.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AdherenceHistoryResponse"
+                  "$ref": "#/components/schemas/PendingFamilyLinkList"
                 },
                 "examples": {
-                  "family_by_date": {
-                    "summary": "Người thân xem một liều đã uống",
+                  "pending": {
                     "value": {
-                      "patient_id": "11111111-1111-4111-8111-111111111111",
-                      "from": "2026-10-01",
-                      "to": "2026-10-19",
-                      "timezone": "Asia/Ho_Chi_Minh",
-                      "as_of": "2026-10-19T12:00:00+07:00",
-                      "summary": {
-                        "total": 1,
-                        "taken": 1,
-                        "late": 0,
-                        "missed": 0,
-                        "pending": 0,
-                        "counted": 1,
-                        "adherence_rate": 100
-                      },
-                      "group_by": "date",
-                      "groups": [
+                      "items": [
                         {
-                          "date": "2026-10-19",
-                          "summary": {
-                            "total": 1,
-                            "taken": 1,
-                            "late": 0,
-                            "missed": 0,
-                            "pending": 0,
-                            "counted": 1,
-                            "adherence_rate": 100
-                          },
-                          "doses": [
-                            {
-                              "medication_id": 1,
-                              "medication_name": "Thuốc A",
-                              "schedule_id": 7,
-                              "scheduled_at": "2026-10-19T08:00:00+07:00",
-                              "taken_at": "2026-10-19T08:05:00+07:00",
-                              "status": "da_uong",
-                              "status_source": "recorded"
-                            }
-                          ]
+                          "link_id": 42,
+                          "family_user_id": "b7dd501a-4ebe-4564-a171-d317710effaa",
+                          "family_full_name": "Nguyễn Văn An",
+                          "status": "pending",
+                          "requested_at": "2026-10-15T09:00:00+07:00"
+                        }
+                      ]
+                    }
+                  },
+                  "empty": {
+                    "value": {
+                      "items": []
+                    }
+                  },
+                  "name_unavailable": {
+                    "value": {
+                      "items": [
+                        {
+                          "link_id": 42,
+                          "family_user_id": "b7dd501a-4ebe-4564-a171-d317710effaa",
+                          "family_full_name": null,
+                          "status": "pending",
+                          "requested_at": "2026-10-15T09:00:00+07:00"
                         }
                       ]
                     }
@@ -4301,50 +4246,160 @@
             }
           },
           "401": {
-            "description": "Thiếu/sai bearer token, phiên hết hạn hoặc tài khoản đã bị xóa; không đọc lịch sử.",
-            "headers": {
-              "Cache-Control": {
-                "description": "Không lưu dữ liệu sức khỏe trong cache.",
-                "schema": {
-                  "type": "string",
-                  "const": "no-store"
-                }
-              }
-            },
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorDetail"
-                },
-                "example": {
-                  "detail": "Missing bearer token"
-                }
-              }
-            }
+            "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "description": "Không đủ quyền; không đọc lịch sử. Trường hợp patient tồn tại ghi audit denied; patient không tồn tại không ghi audit do ràng buộc khóa ngoại. Chính chủ thiếu health_data: consent_revoked. Người thân thiếu liên kết, chia sẻ hoặc một consent, hoặc admin: khong_co_quyen.",
-            "headers": {
-              "Cache-Control": {
-                "description": "Không lưu dữ liệu sức khỏe trong cache.",
-                "schema": {
-                  "type": "string",
-                  "const": "no-store"
-                }
-              }
-            },
+            "description": "Admin không được xem hộ hoặc dùng API này; không trả danh sách.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorDetail"
                 },
                 "examples": {
-                  "family_denied": {
+                  "khong_co_quyen": {
+                    "value": {
+                      "detail": "khong_co_quyen"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Thiếu/sai/lặp status, có query lạ (bao gồm patient_id), hoặc có body: ValidationError. Không âm thầm bỏ qua tham số để thực hiện một truy vấn khác.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                "examples": {
+                  "invalid": {
+                    "value": {
+                      "detail": [
+                        {
+                          "loc": [
+                            "query",
+                            "status"
+                          ],
+                          "msg": "Input should be 'pending'",
+                          "type": "literal_error"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DB/audit không khả dụng; không trả danh sách khi không ghi audit bền vững.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "service_unavailable": {
+                    "value": {
+                      "detail": "service_unavailable"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family/links/{link_id}/approve": {
+      "post": {
+        "tags": [
+          "family"
+        ],
+        "operationId": "approveFamilyLink",
+        "summary": "Bệnh nhân xác nhận consent theo người thân và duyệt yêu cầu liên kết",
+        "description": "Chỉ bệnh nhân là patient_user_id của liên kết được duyệt; family, patient khác và admin đều nhận 403 khong_co_quyen. Dùng app session bearer; không có patient_id trong request, chủ thể lấy từ phiên và đối chiếu link trong DB. family_user_id phải khớp người thân của link; không lộ tên, hồ sơ hoặc dữ liệu y tế trong response.\n\nNhập mã chỉ tạo pending theo tiền đề task 3.13. Endpoint này không tạo pending và không tự cấp consent chung. Trước lần duyệt đầu: patient phải có consent family_sharing còn hiệu lực, đã xác nhận rõ ràng cho đúng family_user_id và document_version phải bằng current_document_version của family_sharing trong GET /consents. Không chặn chỉ vì thiếu terms; health_data được kiểm khi truy cập dữ liệu y tế qua PEP như hiện có, không được tự coi việc duyệt là consent health_data.\n\nThành công lần đầu: trong cùng transaction, lưu bằng chứng theo link/người thân (patient_user_id từ phiên, family_user_id từ link, purpose family_sharing, phiên bản đã xác nhận, thời điểm máy chủ), chuyển pending → active, giữ sharing_enabled=false và ghi audit bền vững. Trả 200. Bằng chứng chỉ thêm, không sửa/xóa bằng nghiệp vụ thường. Không ghi thành công nếu thiếu bằng chứng hoặc audit; lỗi lưu/DB/audit trả 503 service_unavailable, rollback toàn bộ thay đổi của thao tác. Không giả tạo bằng chứng cho link active cũ.\n\nGửi lại an toàn: khóa tự nhiên là link_id cho lần duyệt pending → active. Link active đã có bằng chứng đúng family_user_id/document_version thì trả 200 cùng id/confirmed_at/document_version cũ, không thêm bằng chứng hoặc chuyển trạng thái/công tắc lần nữa. Mỗi lần gửi lại vẫn kiểm caller, cặp liên kết và family_sharing hiện tại trong DB. Nếu phiên bản hiện hành đã đổi, gửi lại ĐÚNG payload của lần đã thành công vẫn trả bằng chứng cũ; đây không phải sự đồng ý phiên bản mới. Gửi phiên bản khác cho link đã active trả 409 link_approval_conflict; đồng ý lại phiên bản mới không thuộc endpoint này. Link active không có bằng chứng trả 409 consent_confirmation_missing, không tự sửa/backfill.\n\nHai request hợp lệ cùng nội dung đồng thời chỉ tạo một bằng chứng; request còn lại trả cùng kết quả. Duyệt và rút family_sharing đồng thời phải có thứ tự nhất quán: nếu rút hoàn tất trước khi duyệt kiểm điều kiện thì duyệt nhận 403; nếu duyệt hoàn tất trước thì rút chặn request y tế tiếp theo. Không cache quyền và không dùng JWT mang quyền.\n\nThứ tự lỗi sau xác thực và validation cấu trúc: tìm link (không có → 404); kiểm caller và family_user_id (sai → 403); revoked/rejected → 409; kiểm family_sharing hiện tại (thiếu/đã rút → 403); active xử lý gửi lại như trên; pending kiểm phiên bản hiện hành (sai → 422) rồi ghi. Admin bị từ chối 403 trước tra cứu link. Không hứa che giấu sự tồn tại link bằng 404 cho caller sai quyền.\n\nCác lần từ chối 403 có ngữ cảnh patient ghi audit denied bền vững ở transaction riêng, không bị rollback theo request. Lần thành công gồm audit tối thiểu cho chính patient. Audit chỉ metadata, không có mã liên kết/token/hồ sơ y tế. Không ghi audit được trả 503, không trả thành công hoặc cấp quyền. Cơ chế audit/enforcement quản lý link được xác định ở plan, không yêu cầu đã có active link để duyệt pending. Mọi API đọc/ghi dữ liệu sức khỏe sau đó vẫn phải qua PEP và điều kiện active + sharing_enabled + consent tương ứng; duyệt link không tự cấp quyền đọc.\n\nTiền đề: tạo link pending thuộc task 3.13; GET /family/links?status=pending của 3.16 cung cấp link_id/family_user_id cho patient. Không được dùng ID ví dụ như dữ liệu thật. Contract này chỉ thêm thao tác xác nhận, không triển khai màn hình hay toàn bộ luồng redeem.\n\nPhối hợp GET/reject: client lấy link_id/family_user_id từ GET /family/links?status=pending của chính mình. GET có thể cũ, vì vậy xử lý 409 bằng cách tải lại danh sách. Approve và reject cạnh tranh trên cùng pending chỉ một bên commit: nếu reject thắng, approve trả 409 invalid_link_transition và không để bằng chứng đồng ý dở dang; nếu approve thắng, reject trả 409. Sau quyết định đã commit, GET mới không liệt kê link đó. Không chấp nhận query parameter ở approve; query lạ trả 422 ValidationError.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "link_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "description": "ID yêu cầu liên kết pending của bệnh nhân; sai kiểu hoặc < 1 trả 422."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FamilyLinkApprovalRequest"
+              },
+              "examples": {
+                "confirmed": {
+                  "value": {
+                    "family_user_id": "b7dd501a-4ebe-4564-a171-d317710effaa",
+                    "consent_confirmed": true,
+                    "document_version": "2026-10-v1"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đã duyệt lần đầu hoặc gửi lại cùng xác nhận. Lần đầu sharing_enabled=false; gửi lại trả công tắc hiện tại, giữ bằng chứng cũ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FamilyLinkApproval"
+                },
+                "examples": {
+                  "approved": {
+                    "value": {
+                      "link_id": 42,
+                      "family_user_id": "b7dd501a-4ebe-4564-a171-d317710effaa",
+                      "status": "active",
+                      "sharing_enabled": false,
+                      "consent_confirmation": {
+                        "id": 91,
+                        "purpose": "family_sharing",
+                        "document_version": "2026-10-v1",
+                        "confirmed_at": "2026-10-15T10:00:00+07:00"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Không ghi link/bằng chứng. khong_co_quyen: không phải patient của link, admin hoặc family_user_id không khớp. consent_revoked: patient chưa có/đã rút family_sharing. Có denied audit riêng; lỗi audit chuyển 503.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "khong_co_quyen": {
                     "value": {
                       "detail": "khong_co_quyen"
                     }
                   },
-                  "self_consent_revoked": {
+                  "consent_revoked": {
                     "value": {
                       "detail": "consent_revoked"
                     }
@@ -4353,17 +4408,52 @@
               }
             }
           },
-          "422": {
-            "description": "Query sai định dạng: ValidationError. Khoảng ngày không hợp lệ, quá 90 ngày hoặc ngày cuối ở tương lai: ErrorDetail.",
-            "headers": {
-              "Cache-Control": {
-                "description": "Không lưu dữ liệu sức khỏe trong cache.",
+          "404": {
+            "description": "Không có link_id, không tạo liên kết hoặc bằng chứng mới.",
+            "content": {
+              "application/json": {
                 "schema": {
-                  "type": "string",
-                  "const": "no-store"
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "family_link_not_found": {
+                    "value": {
+                      "detail": "family_link_not_found"
+                    }
+                  }
                 }
               }
-            },
+            }
+          },
+          "409": {
+            "description": "Không ghi thay đổi. invalid_link_transition: link revoked/rejected. consent_confirmation_missing: active cũ chưa có bằng chứng. link_approval_conflict: active có bằng chứng nhưng payload khác phiên bản đã xác nhận.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "invalid_link_transition": {
+                    "value": {
+                      "detail": "invalid_link_transition"
+                    }
+                  },
+                  "consent_confirmation_missing": {
+                    "value": {
+                      "detail": "consent_confirmation_missing"
+                    }
+                  },
+                  "link_approval_conflict": {
+                    "value": {
+                      "detail": "link_approval_conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Sai cấu trúc trả ValidationError: thiếu/sai field, field lạ, consent_confirmed khác true, UUID sai, link_id không hợp lệ, document_version ngoài độ dài 1–64. Pending với phiên bản khác hiện hành trả ErrorDetail consent_document_outdated; client tải lại GET /consents, hiển thị lại văn bản và yêu cầu patient xác nhận lại. Không đổi link/bằng chứng.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4377,57 +4467,638 @@
                   ]
                 },
                 "examples": {
-                  "invalid_uuid": {
+                  "confirmation_required": {
                     "value": {
                       "detail": [
                         {
                           "loc": [
-                            "query",
-                            "patient_id"
+                            "body",
+                            "consent_confirmed"
                           ],
-                          "msg": "Input should be a valid UUID",
-                          "type": "uuid_parsing"
+                          "msg": "Input should be True",
+                          "type": "literal_error"
                         }
                       ]
                     }
                   },
-                  "range_too_large": {
+                  "outdated": {
                     "value": {
-                      "detail": "adherence_range_too_large"
-                    }
-                  },
-                  "invalid_range": {
-                    "value": {
-                      "detail": "invalid_adherence_date_range"
-                    }
-                  },
-                  "future_end": {
-                    "value": {
-                      "detail": "adherence_end_date_in_future"
+                      "detail": "consent_document_outdated"
                     }
                   }
                 }
               }
             }
           },
-          "500": {
-            "description": "Lỗi nội bộ, gồm lỗi kiểm quyền hoặc ghi access log; không trả dữ liệu sức khỏe.",
-            "headers": {
-              "Cache-Control": {
-                "description": "Không lưu dữ liệu sức khỏe trong cache.",
-                "schema": {
-                  "type": "string",
-                  "const": "no-store"
-                }
-              }
-            },
+          "503": {
+            "description": "DB, ghi bằng chứng hoặc audit không khả dụng; không trả thành công, không commit thay đổi dở dang. Client có thể gửi lại cùng payload sau lỗi tạm thời; nếu lần trước thực tế đã commit nhưng mất response thì nhận bằng chứng cũ.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorDetail"
                 },
-                "example": {
-                  "detail": "Internal server error"
+                "examples": {
+                  "service_unavailable": {
+                    "value": {
+                      "detail": "service_unavailable"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family/links/{link_id}/reject": {
+      "post": {
+        "tags": [
+          "family"
+        ],
+        "operationId": "rejectFamilyLink",
+        "summary": "Bệnh nhân từ chối yêu cầu liên kết đang chờ",
+        "description": "Chỉ patient_user_id của link được từ chối. Family, patient khác hoặc admin trả 403 khong_co_quyen. Admin bị từ chối trước tra cứu link. Không nhận patient_id, family_user_id, lý do tự do, query parameter hoặc body (kể cả {}); input ngoài path và xác thực trả 422 ValidationError. UUID patient/family lấy từ link, caller lấy từ app session.\n\nKhông yêu cầu consent health_data, family_sharing hoặc terms; bệnh nhân có thể từ chối ngay cả khi chưa đồng ý chia sẻ. Không yêu cầu đã có active link; không trả dữ liệu sức khỏe và không cấp/rút consent chung.\n\nPending → rejected: lưu rejected_at từ đồng hồ máy chủ và audit bền vững trong cùng transaction; giữ sharing_enabled=false, không tạo bằng chứng đồng ý, không thay link/consent khác. Không đổi requested_at (thời điểm tạo yêu cầu). Trả 200 FamilyLinkRejection, không cần body request.\n\nIdempotent theo link_id: patient gửi lại trên link đã rejected trả 200 với cùng rejected_at lần đầu, không ghi lại quyết định từ chối hoặc thay thời điểm; mỗi request vẫn kiểm chủ thể và audit lần truy cập. Hai reject đồng thời cùng kết quả và thời điểm. Active/revoked trả 409 invalid_link_transition, không hủy liên kết active hoặc xóa bằng chứng consent.\n\nRace approve/reject trên cùng pending: chỉ một quyết định commit. Approve thắng → reject nhận 409; reject thắng → approve nhận 409. Không có active kèm rejected_at, không có rejected kèm bằng chứng approve từ transaction thua; transaction thua không để bằng chứng/audit allowed dở dang. Không sửa hoặc xóa bằng chứng/lịch sử đã commit từ thao tác khác. Request conflict có thể ghi audit metadata riêng theo chính sách quản lý link. Tái gửi reject sau rejected trả 200 như trên.\n\nThứ tự sau xác thực/validation cấu trúc: admin → 403; tìm link (thiếu → 404); kiểm patient (sai → 403); rejected → retry 200; active/revoked → 409; pending → từ chối. Từ chối sai quyền có ngữ cảnh patient ghi denied ở transaction riêng; lỗi ghi audit → 503. Không che sai quyền bằng 404, không log mã liên kết/token/hồ sơ.\n\nDB/lưu trạng thái/audit bền vững lỗi → 503 service_unavailable, rollback thay đổi thao tác, không trả thành công một phần. Nếu mất response sau commit, retry nhận trạng thái đã rejected cùng timestamp cũ. rejected_at là căn cứ cho cooldown tạo lại theo QD-34 do tiền đề 3.13 thực thi; endpoint này không tạo lại hoặc tái kích hoạt link.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "link_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "description": "ID yêu cầu; sai kiểu hoặc <1 trả 422."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Đã từ chối hoặc retry trên rejected; cùng rejected_at cũ, không đổi consent chung.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FamilyLinkRejection"
+                },
+                "examples": {
+                  "rejected": {
+                    "value": {
+                      "link_id": 42,
+                      "family_user_id": "b7dd501a-4ebe-4564-a171-d317710effaa",
+                      "status": "rejected",
+                      "rejected_at": "2026-10-15T10:05:00+07:00"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Không phải patient của link hoặc là admin; không ghi trạng thái, denied audit riêng.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "khong_co_quyen": {
+                    "value": {
+                      "detail": "khong_co_quyen"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Link không tồn tại; không tạo link.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "family_link_not_found": {
+                    "value": {
+                      "detail": "family_link_not_found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Link active/revoked hoặc approve đã thắng race; không thay trạng thái/bằng chứng.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "invalid_link_transition": {
+                    "value": {
+                      "detail": "invalid_link_transition"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "link_id sai hoặc có body/query không được hỗ trợ: ValidationError. Endpoint không nhận lý do từ chối.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                "examples": {
+                  "invalid_id": {
+                    "value": {
+                      "detail": [
+                        {
+                          "loc": [
+                            "path",
+                            "link_id"
+                          ],
+                          "msg": "Input should be greater than or equal to 1",
+                          "type": "greater_than_equal"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DB/audit không khả dụng; không commit thay đổi dở dang, được retry cùng link_id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "service_unavailable": {
+                    "value": {
+                      "detail": "service_unavailable"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family/links/{link_id}/sharing": {
+      "patch": {
+        "tags": [
+          "family"
+        ],
+        "operationId": "updateFamilyLinkSharing",
+        "summary": "Người bệnh bật hoặc tắt chia sẻ dữ liệu cho một người giám sát",
+        "description": "Đặt công tắc `sharing_enabled` của một liên kết `active`. Người thân chỉ xem được dữ liệu sức khỏe và nhận cảnh báo khi đủ cả ba: liên kết `active`, công tắc bật, người bệnh còn consent `family_sharing` (QD-28). Liên kết mới chấp thuận luôn bắt đầu với công tắc tắt (QD-30), nên đây là bước người bệnh bật chia sẻ.\n\nPhân quyền: chỉ người bệnh của liên kết (`patient_user_id`). Người thân của liên kết, người dùng khác và admin nhận 403 `khong_co_quyen`; không đổi gì, ghi audit `denied` ở transaction riêng (không mất khi request lỗi). Admin bị từ chối trước khi tra cứu liên kết. Không che sai quyền bằng 404.\n\n**Bật** (`true`) cần người bệnh còn consent `family_sharing` hiệu lực (403 `consent_revoked`, kiểm ở mỗi request, kể cả khi công tắc đã bật) và liên kết có bằng chứng xác nhận đồng ý (409 `consent_confirmation_missing` với liên kết cũ không có bằng chứng; không tự tạo bằng chứng). **Tắt** (`false`) luôn được phép với liên kết `active`, kể cả khi người bệnh đã rút consent, vì đó là rút quyền.\n\n**Idempotent:** body là giá trị mong muốn. Gửi đúng giá trị hiện tại trả 200 với trạng thái hiện tại, không đổi gì; gửi lại sau lỗi mạng là an toàn, không cần khóa idempotency.\n\n**Hiệu lực ngay:** sau khi request commit, request kế tiếp của người thân (cùng token) được quyết định theo giá trị mới; danh sách người nhận cảnh báo đọc lại ở mỗi lần gửi. Server không cache quyết định phân quyền. Thông báo đã giao trước đó không thu hồi được (QD-29).\n\nKhông đổi trạng thái liên kết, bằng chứng đồng ý hay consent chung. Mỗi lần thành công ghi audit metadata tối thiểu trong cùng transaction; lỗi DB/audit → 503 và rollback.\n\nChạy đồng thời với `POST /family/links/{link_id}/revoke`: hai request được xếp hàng trên cùng liên kết. Nếu hủy commit trước, request này trả 409 `family_link_not_active`; nếu request này commit trước, hủy vẫn thành công. Trạng thái cuối luôn là `revoked`, và người thân không xem được gì ở request kế tiếp.\n\nThứ tự kiểm: token (401) → cấu trúc path/body, query lạ (422) → tài khoản admin (403) → liên kết không tồn tại (404) → không phải người bệnh của liên kết (403) → liên kết không `active` (409 `family_link_not_active`) → khi bật: consent `family_sharing` (403 `consent_revoked`) → khi bật: bằng chứng xác nhận (409 `consent_confirmation_missing`) → cập nhật (200).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "link_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "description": "ID liên kết lấy từ `GET /family/caregivers`; sai kiểu hoặc < 1 trả 422."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FamilyLinkSharingUpdate"
+              },
+              "examples": {
+                "enable": {
+                  "summary": "Bật chia sẻ",
+                  "value": {
+                    "sharing_enabled": true
+                  }
+                },
+                "disable": {
+                  "summary": "Tắt chia sẻ",
+                  "value": {
+                    "sharing_enabled": false
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Liên kết sau khi đặt công tắc (hoặc không đổi nếu đã đúng giá trị). Cùng hình dạng một mục của `GET /family/caregivers`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Caregiver"
+                },
+                "examples": {
+                  "enabled": {
+                    "value": {
+                      "link_id": 42,
+                      "family_user_id": "b7dd501a-4ebe-4564-a171-d317710effaa",
+                      "family_full_name": "Nguyễn Văn An",
+                      "status": "active",
+                      "sharing_enabled": true,
+                      "approved_at": "2026-10-15T10:05:00+07:00"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "`khong_co_quyen`: không phải người bệnh của liên kết hoặc là admin. `consent_revoked`: bật chia sẻ khi người bệnh chưa đồng ý hoặc đã rút `family_sharing`; client hướng người bệnh tới màn Quyền riêng tư. Không đổi gì, ghi audit `denied`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "khong_co_quyen": {
+                    "value": {
+                      "detail": "khong_co_quyen"
+                    }
+                  },
+                  "consent_revoked": {
+                    "value": {
+                      "detail": "consent_revoked"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Liên kết không tồn tại.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "family_link_not_found": {
+                    "value": {
+                      "detail": "family_link_not_found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`family_link_not_active`: liên kết đang chờ, đã từ chối hoặc đã hủy (client tải lại danh sách). `consent_confirmation_missing`: bật chia sẻ cho liên kết cũ không có bằng chứng xác nhận. Không đổi gì.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "family_link_not_active": {
+                    "value": {
+                      "detail": "family_link_not_active"
+                    }
+                  },
+                  "consent_confirmation_missing": {
+                    "value": {
+                      "detail": "consent_confirmation_missing"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Thiếu `sharing_enabled`, sai kiểu (chỉ nhận boolean JSON), field lạ, query parameter, hoặc `link_id` không hợp lệ: `ValidationError`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                "examples": {
+                  "invalid": {
+                    "value": {
+                      "detail": [
+                        {
+                          "loc": [
+                            "body",
+                            "sharing_enabled"
+                          ],
+                          "msg": "Field required",
+                          "type": "missing"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DB hoặc audit không khả dụng: không thay đổi gì, không trả kết quả một phần.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "service_unavailable": {
+                    "value": {
+                      "detail": "service_unavailable"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family/links/{link_id}/revoke": {
+      "post": {
+        "tags": [
+          "family"
+        ],
+        "operationId": "revokeFamilyLink",
+        "summary": "Người bệnh hủy liên kết với một người giám sát",
+        "description": "Chuyển liên kết `active` → `revoked`. Từ request kế tiếp, người thân không xem được dữ liệu và không còn trong danh sách người nhận cảnh báo của người bệnh, dù còn giữ token cũ. Server không cache quyết định phân quyền. Thông báo đã giao trước đó không thu hồi được (QD-29).\n\nPhân quyền: chỉ người bệnh của liên kết. Người thân của liên kết, người dùng khác và admin nhận 403 `khong_co_quyen`; không đổi gì, ghi audit `denied` ở transaction riêng. Admin bị từ chối trước khi tra cứu liên kết. Không cần consent nào: người bệnh luôn hủy được.\n\nKhông nhận body (kể cả `{}`) hay query parameter: trả 422 `ValidationError`.\n\n**Lịch sử được giữ** (QD-30): dòng liên kết và bằng chứng xác nhận đồng ý không bị xóa. Người thân muốn liên kết lại phải gửi yêu cầu mới (`POST /family/link-requests`, gửi được ngay); người bệnh chấp thuận lại với xác nhận đồng ý mới, công tắc chia sẻ bắt đầu ở trạng thái tắt. Hủy liên kết không tính là một lần từ chối theo BS-04.\n\n**Idempotent theo `link_id`:** gửi lại trên liên kết đã `revoked` trả 200 với cùng `revoked_at` lần đầu, không ghi lại thay đổi.\n\nEndpoint dùng `POST .../revoke` (cùng kiểu `approve`/`reject`) thay vì `DELETE`, vì liên kết không biến mất mà chuyển trạng thái và còn trong lịch sử.\n\nMỗi lần thành công ghi audit metadata tối thiểu trong cùng transaction; lỗi DB/audit → 503 và rollback. Chạy đồng thời với `PATCH /family/links/{link_id}/sharing`: xem mô tả endpoint đó.\n\nThứ tự kiểm: token (401) → path, body, query (422) → tài khoản admin (403) → liên kết không tồn tại (404) → không phải người bệnh của liên kết (403) → đã `revoked` (200, gửi lại) → `pending` hoặc `rejected` (409 `invalid_link_transition`; yêu cầu đang chờ dùng `reject`) → hủy (200).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "link_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "description": "ID liên kết lấy từ `GET /family/caregivers`; sai kiểu hoặc < 1 trả 422."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Đã hủy, hoặc gửi lại trên liên kết đã hủy (cùng `revoked_at`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FamilyLinkRevocation"
+                },
+                "examples": {
+                  "revoked": {
+                    "value": {
+                      "link_id": 42,
+                      "family_user_id": "b7dd501a-4ebe-4564-a171-d317710effaa",
+                      "status": "revoked",
+                      "revoked_at": "2026-10-21T08:15:00+07:00"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Không phải người bệnh của liên kết hoặc là admin; không đổi gì, ghi audit `denied`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "khong_co_quyen": {
+                    "value": {
+                      "detail": "khong_co_quyen"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Liên kết không tồn tại.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "family_link_not_found": {
+                    "value": {
+                      "detail": "family_link_not_found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Liên kết đang chờ hoặc đã bị từ chối: không có gì để hủy (yêu cầu đang chờ dùng `POST /family/links/{link_id}/reject`). Client tải lại danh sách.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "invalid_link_transition": {
+                    "value": {
+                      "detail": "invalid_link_transition"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`link_id` không hợp lệ, có body hoặc query parameter: `ValidationError`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                "examples": {
+                  "invalid": {
+                    "value": {
+                      "detail": [
+                        {
+                          "loc": [
+                            "path",
+                            "link_id"
+                          ],
+                          "msg": "Input should be greater than or equal to 1",
+                          "type": "greater_than_equal"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DB hoặc audit không khả dụng: không thay đổi gì, không trả kết quả một phần.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "service_unavailable": {
+                    "value": {
+                      "detail": "service_unavailable"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/family/caregivers": {
+      "get": {
+        "tags": [
+          "family"
+        ],
+        "operationId": "listMyCaregivers",
+        "summary": "Người bệnh xem danh sách người giám sát của mình",
+        "description": "Trả mọi liên kết `active` mà người gọi là người bệnh (`patient_user_id`), tức những người thân đã được chấp thuận qua `POST /family/links/{link_id}/approve`. Yêu cầu đang chờ không nằm ở đây (dùng `GET /family/links?status=pending`); liên kết đã từ chối hoặc đã hủy không được trả.\n\nPhân quyền: phiên hợp lệ của tài khoản cá nhân; người gọi chỉ thấy liên kết của chính mình, không nhận `patient_id` từ client. Admin nhận 403 `khong_co_quyen` (QD-44). Không cần consent nào để xem: người bệnh đã rút `family_sharing` vẫn thấy danh sách để tắt chia sẻ hoặc hủy liên kết.\n\nKhông có query parameter và không có body; mọi query hoặc body trả 422 `ValidationError`.\n\nĐọc trạng thái DB ở mỗi request; client không cache danh sách giữa các lần mở màn và phải xử lý 409 khi thao tác trên danh sách cũ (tải lại).\n\nMỗi lần xem ghi audit metadata tối thiểu (không có tên, hồ sơ, mã liên kết, token). Không ghi được audit hoặc không đọc được DB → 503, không trả danh sách. Không chạm dữ liệu sức khỏe nên không ghi nhật ký truy cập (`access_logs`).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Danh sách người giám sát; không có thì `items` rỗng.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaregiverList"
+                },
+                "examples": {
+                  "caregivers": {
+                    "value": {
+                      "items": [
+                        {
+                          "link_id": 42,
+                          "family_user_id": "b7dd501a-4ebe-4564-a171-d317710effaa",
+                          "family_full_name": "Nguyễn Văn An",
+                          "status": "active",
+                          "sharing_enabled": true,
+                          "approved_at": "2026-10-15T10:05:00+07:00"
+                        },
+                        {
+                          "link_id": 31,
+                          "family_user_id": "3f0c2a9e-7b1d-4e58-9c6a-2d4b8e1f0a73",
+                          "family_full_name": null,
+                          "status": "active",
+                          "sharing_enabled": false,
+                          "approved_at": "2026-10-12T08:20:00+07:00"
+                        }
+                      ]
+                    }
+                  },
+                  "empty": {
+                    "value": {
+                      "items": []
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Tài khoản admin (QD-44); không trả danh sách.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "khong_co_quyen": {
+                    "value": {
+                      "detail": "khong_co_quyen"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Có query parameter hoặc body: `ValidationError`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                "examples": {
+                  "invalid": {
+                    "value": {
+                      "detail": [
+                        {
+                          "loc": [
+                            "query",
+                            "status"
+                          ],
+                          "msg": "Extra inputs are not permitted",
+                          "type": "extra_forbidden"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "DB hoặc audit không khả dụng: không thay đổi gì, không trả kết quả một phần.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "service_unavailable": {
+                    "value": {
+                      "detail": "service_unavailable"
+                    }
+                  }
                 }
               }
             }
@@ -6267,289 +6938,309 @@
         },
         "description": "Yêu cầu liên kết của người gọi. Cố ý **không** chứa id, tên, email, ảnh hay bất kỳ thông tin hồ sơ nào của người bệnh (QD-34)."
       },
-      "AdherenceSummary": {
+      "PendingFamilyLink": {
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "total",
-          "taken",
-          "late",
-          "missed",
-          "pending",
-          "counted",
-          "adherence_rate"
-        ],
-        "properties": {
-          "total": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "taken": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "late": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "missed": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "pending": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "counted": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "adherence_rate": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "minimum": 0,
-            "maximum": 100,
-            "multipleOf": 0.01,
-            "description": "100 × (taken + late) / counted, làm tròn 2 chữ số; null khi counted = 0. Pending không vào mẫu số."
-          }
-        },
-        "description": "counted = taken + late + missed; total = counted + pending."
-      },
-      "AdherenceDose": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "medication_id",
-          "medication_name",
-          "schedule_id",
-          "scheduled_at",
-          "taken_at",
+          "link_id",
+          "family_user_id",
+          "family_full_name",
           "status",
-          "status_source"
+          "requested_at"
         ],
         "properties": {
-          "medication_id": {
+          "link_id": {
             "type": "integer",
             "format": "int64",
-            "minimum": 1,
-            "exclusiveMaximum": 9223372036854775808
+            "minimum": 1
           },
-          "medication_name": {
-            "type": "string"
-          },
-          "schedule_id": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 1,
-            "exclusiveMaximum": 9223372036854775808
-          },
-          "scheduled_at": {
+          "family_user_id": {
             "type": "string",
-            "format": "date-time",
-            "description": "RFC 3339, offset Asia/Ho_Chi_Minh."
+            "format": "uuid"
           },
-          "taken_at": {
-            "type": [
-              "string",
-              "null"
+          "family_full_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
             ],
-            "format": "date-time",
-            "description": "RFC 3339, offset Asia/Ho_Chi_Minh; null nếu chưa xác nhận."
+            "description": "Tên hiển thị hiện tại của người gửi từ hồ sơ identity; null nếu không có/đã xóa thông tin. Không thay bằng email, số điện thoại hay mã liên kết. Không phải danh tính đã được xác minh."
           },
           "status": {
             "type": "string",
             "enum": [
-              "da_uong",
-              "uong_tre",
-              "bo_lo",
-              "cho_xac_nhan"
+              "pending"
             ]
           },
-          "status_source": {
+          "requested_at": {
             "type": "string",
-            "enum": [
-              "recorded",
-              "inferred"
-            ],
-            "description": "Liều đã xác nhận: recorded. Liều chờ xác nhận: inferred. Liều bỏ lỡ có thể recorded hoặc inferred."
-          }
-        },
-        "description": "da_uong/uong_tre có taken_at và status_source=recorded; bo_lo/cho_xac_nhan có taken_at=null; cho_xac_nhan có status_source=inferred."
-      },
-      "AdherenceDateGroup": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "date",
-          "summary",
-          "doses"
-        ],
-        "properties": {
-          "date": {
-            "type": "string",
-            "format": "date"
-          },
-          "summary": {
-            "$ref": "#/components/schemas/AdherenceSummary"
-          },
-          "doses": {
-            "type": "array",
-            "minItems": 1,
-            "items": {
-              "$ref": "#/components/schemas/AdherenceDose"
-            }
+            "format": "date-time",
+            "description": "Thời điểm máy chủ tạo yêu cầu pending, ISO 8601 có offset. Schema hiện tại ghi lúc tạo ở caregiver_links.linked_at; không diễn giải là thời điểm approve và không đổi giá trị này khi duyệt/từ chối."
           }
         }
       },
-      "AdherenceMedicationGroup": {
+      "PendingFamilyLinkList": {
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "medication_id",
-          "medication_name",
-          "summary",
-          "doses"
+          "items"
         ],
         "properties": {
-          "medication_id": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PendingFamilyLink"
+            },
+            "description": "Tất cả pending của patient hiện tại; requested_at giảm dần, link_id giảm dần để phá hòa. Không phân trang hoặc cắt ngầm."
+          }
+        }
+      },
+      "FamilyLinkApprovalRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "family_user_id",
+          "consent_confirmed",
+          "document_version"
+        ],
+        "properties": {
+          "family_user_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Người thân được bệnh nhân xem và xác nhận. Phải khớp family_user_id của link_id; không dùng field này để đổi người thân của liên kết."
+          },
+          "consent_confirmed": {
+            "type": "boolean",
+            "enum": [
+              true
+            ],
+            "description": "Chỉ gửi true sau thao tác đồng ý rõ ràng của bệnh nhân. Thiếu hoặc false trả 422 ValidationError; không tự đặt true khi mở màn hình."
+          },
+          "document_version": {
+            "$ref": "#/components/schemas/ConsentDocumentVersion",
+            "description": "Phiên bản nội dung family_sharing đã hiển thị, lấy current_document_version của purpose family_sharing từ GET /consents. Không phải phiên bản terms."
+          }
+        }
+      },
+      "FamilyLinkConsentConfirmation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "purpose",
+          "document_version",
+          "confirmed_at"
+        ],
+        "properties": {
+          "id": {
             "type": "integer",
             "format": "int64",
             "minimum": 1,
-            "exclusiveMaximum": 9223372036854775808
+            "description": "ID bằng chứng chỉ thêm, gắn link_id, patient_user_id và family_user_id tại máy chủ; không phải ID consent chung."
           },
-          "medication_name": {
-            "type": "string"
+          "purpose": {
+            "type": "string",
+            "enum": [
+              "family_sharing"
+            ]
           },
-          "summary": {
-            "$ref": "#/components/schemas/AdherenceSummary"
+          "document_version": {
+            "$ref": "#/components/schemas/ConsentDocumentVersion"
           },
-          "doses": {
-            "type": "array",
-            "minItems": 1,
-            "items": {
-              "$ref": "#/components/schemas/AdherenceDose"
-            }
+          "confirmed_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Thời điểm máy chủ xác nhận, ISO 8601 có offset. Giữ nguyên khi gửi lại."
           }
         }
       },
-      "AdherenceByDateResponse": {
+      "FamilyLinkApproval": {
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "patient_id",
-          "from",
-          "to",
-          "timezone",
-          "as_of",
-          "summary",
-          "group_by",
-          "groups"
+          "link_id",
+          "family_user_id",
+          "status",
+          "sharing_enabled",
+          "consent_confirmation"
         ],
         "properties": {
-          "patient_id": {
+          "link_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "family_user_id": {
             "type": "string",
             "format": "uuid"
           },
-          "from": {
+          "status": {
             "type": "string",
-            "format": "date"
+            "enum": [
+              "active"
+            ]
           },
-          "to": {
-            "type": "string",
-            "format": "date"
+          "sharing_enabled": {
+            "type": "boolean",
+            "description": "Lần duyệt đầu giữ false; không tự bật chia sẻ. Gửi lại trả trạng thái hiện tại, không đổi công tắc (có thể true nếu được bật riêng sau đó)."
           },
-          "timezone": {
-            "type": "string",
-            "const": "Asia/Ho_Chi_Minh"
-          },
-          "as_of": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Thời điểm chốt dữ liệu, RFC 3339 với offset Asia/Ho_Chi_Minh."
-          },
-          "summary": {
-            "$ref": "#/components/schemas/AdherenceSummary"
-          },
-          "group_by": {
-            "type": "string",
-            "const": "date"
-          },
-          "groups": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/AdherenceDateGroup"
-            },
-            "description": "Ngày giảm dần; liều trong mỗi nhóm theo scheduled_at, medication_id, schedule_id tăng dần."
+          "consent_confirmation": {
+            "$ref": "#/components/schemas/FamilyLinkConsentConfirmation"
           }
         }
       },
-      "AdherenceByMedicationResponse": {
+      "FamilyLinkRejection": {
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "patient_id",
-          "from",
-          "to",
-          "timezone",
-          "as_of",
-          "summary",
-          "group_by",
-          "groups"
+          "link_id",
+          "family_user_id",
+          "status",
+          "rejected_at"
         ],
         "properties": {
-          "patient_id": {
+          "link_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "family_user_id": {
             "type": "string",
             "format": "uuid"
           },
-          "from": {
+          "status": {
             "type": "string",
-            "format": "date"
+            "enum": [
+              "rejected"
+            ]
           },
-          "to": {
-            "type": "string",
-            "format": "date"
-          },
-          "timezone": {
-            "type": "string",
-            "const": "Asia/Ho_Chi_Minh"
-          },
-          "as_of": {
+          "rejected_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Thời điểm chốt dữ liệu, RFC 3339 với offset Asia/Ho_Chi_Minh."
-          },
-          "summary": {
-            "$ref": "#/components/schemas/AdherenceSummary"
-          },
-          "group_by": {
-            "type": "string",
-            "const": "medication"
-          },
-          "groups": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/AdherenceMedicationGroup"
-            },
-            "description": "medication_id tăng dần; liều trong mỗi nhóm theo scheduled_at, medication_id, schedule_id tăng dần."
+            "description": "Thời điểm máy chủ từ chối lần đầu, ISO 8601 có offset. Giữ nguyên khi retry."
           }
         }
       },
-      "AdherenceHistoryResponse": {
-        "oneOf": [
-          {
-            "$ref": "#/components/schemas/AdherenceByDateResponse"
-          },
-          {
-            "$ref": "#/components/schemas/AdherenceByMedicationResponse"
-          }
+      "Caregiver": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "link_id",
+          "family_user_id",
+          "family_full_name",
+          "status",
+          "sharing_enabled",
+          "approved_at"
         ],
-        "discriminator": {
-          "propertyName": "group_by",
-          "mapping": {
-            "date": "#/components/schemas/AdherenceByDateResponse",
-            "medication": "#/components/schemas/AdherenceByMedicationResponse"
+        "description": "Một người giám sát của người bệnh: liên kết `active` mà người gọi là người bệnh. Chỉ metadata quản lý liên kết, không có dữ liệu sức khỏe hay thông tin liên lạc của người thân.",
+        "properties": {
+          "link_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "family_user_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "family_full_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Tên hiển thị hiện tại của người thân; null nếu không có. Cùng quy tắc với `PendingFamilyLink.family_full_name`."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active"
+            ]
+          },
+          "sharing_enabled": {
+            "type": "boolean",
+            "description": "Công tắc chia sẻ của liên kết này. Người thân chỉ xem được dữ liệu khi công tắc bật **và** người bệnh còn consent `family_sharing` (QD-28); `true` ở đây không đảm bảo người thân đang xem được."
+          },
+          "approved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Thời điểm máy chủ ghi xác nhận đồng ý khi người bệnh chấp thuận (`FamilyLinkConsentConfirmation.confirmed_at`), ISO 8601 có offset. `null` với liên kết cũ không có bằng chứng xác nhận: liên kết như vậy hủy được nhưng không bật chia sẻ được (409 `consent_confirmation_missing`)."
+          }
+        }
+      },
+      "CaregiverList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Caregiver"
+            },
+            "description": "Mọi liên kết `active` của người gọi với vai trò người bệnh; `approved_at` giảm dần (null xếp cuối), rồi `link_id` giảm dần. Không phân trang, không cắt ngầm."
+          }
+        }
+      },
+      "FamilyLinkSharingUpdate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sharing_enabled"
+        ],
+        "properties": {
+          "sharing_enabled": {
+            "type": "boolean",
+            "description": "Giá trị mong muốn của công tắc (không phải lệnh đảo). Gửi đúng giá trị hiện tại là hợp lệ và không đổi gì."
+          }
+        }
+      },
+      "FamilyLinkRevocation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "link_id",
+          "family_user_id",
+          "status",
+          "revoked_at"
+        ],
+        "properties": {
+          "link_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "family_user_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "revoked"
+            ]
+          },
+          "revoked_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Thời điểm máy chủ hủy liên kết lần đầu, ISO 8601 có offset. Giữ nguyên khi gửi lại."
           }
         }
       }
