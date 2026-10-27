@@ -5105,6 +5105,537 @@
           }
         }
       }
+    },
+    "/adherence": {
+      "get": {
+        "tags": [
+          "adherence"
+        ],
+        "operationId": "getAdherenceHistory",
+        "summary": "Lịch sử tuân thủ của chính mình hoặc bệnh nhân đã chia sẻ",
+        "description": "Đọc lịch sử liều theo ngày hoặc thuốc. Không nhận body. Nếu bỏ `patient_id`, lấy chính người gọi. Nếu chọn bệnh nhân khác, mỗi request kiểm liên kết người thân active, `sharing_enabled`, consent `family_sharing` và `health_data` của bệnh nhân từ DB; rút quyền có hiệu lực ở request kế tiếp. Chính chủ cần `health_data`. Admin không được đọc. Truy cập được phép hoặc bị từ chối đối với patient tồn tại đều được audit; patient không tồn tại trả 403 cùng body nhưng không ghi audit vì không có khóa ngoại. Lỗi quyền/audit fail-closed. Không trả dữ liệu sức khỏe khi bị từ chối. Khoảng ngày tính theo Asia/Ho_Chi_Minh, tối đa 90 ngày bao gồm hai đầu; mặc định kết thúc hôm nay và bắt đầu 29 ngày trước ngày kết thúc. Chỉ trả liều đã đến thời điểm `as_of`. Response không cache.\n\n**Trạng thái liều** (task 3.19). Gọi T là `scheduled_at`, hạn chót D = T + 120 phút, `patient_last_synced_at` là lần gần nhất điện thoại của bệnh nhân báo đã gửi hết hàng chờ (`POST /doses/sync-checkpoints`, giờ server):\n- `da_uong` / `uong_tre`: đã có xác nhận hợp lệ, `status_source = recorded`.\n- `cho_xac_nhan`: `as_of` ≤ D và chưa có bản ghi; `inferred`.\n- `chua_xac_minh`: `as_of` > D, chưa có bản ghi, và `patient_last_synced_at` là `null` hoặc trước D. Server chưa biết bệnh nhân đã uống chưa (điện thoại có thể đang giữ xác nhận offline); `inferred`; không tính vào tỷ lệ tuân thủ; người thân **không** nhận cảnh báo cho liều này cho tới khi xác minh được.\n- `bo_lo`: `recorded` khi đã có bản ghi bỏ lỡ (Worker ghi sau khi xác minh, hoặc xác nhận sau 120 phút); `inferred` khi chưa có bản ghi nhưng `patient_last_synced_at` ≥ D (đã xác minh, Worker chưa kịp ghi, hoặc lịch tắt nhắc nên Worker không ghi).\n\nBiên so tới micro giây: đúng D vẫn là `cho_xac_nhan`; `patient_last_synced_at` = D là đã xác minh. Liều `chua_xac_minh` chuyển sang trạng thái khác ở request sau khi bệnh nhân đồng bộ, không cần client làm gì.\n\n`patient_last_synced_at` là dữ liệu về bệnh nhân, chỉ trả cho người qua được kiểm quyền của endpoint này. App người thân hiển thị như bằng chứng (ví dụ \"Chưa xác minh — điện thoại đồng bộ lần cuối 07:02\") và không lưu bền (QD-29).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "patient_id",
+            "in": "query",
+            "required": false,
+            "description": "UUID bệnh nhân; bỏ trống để xem chính mình. UUID khác phải là bệnh nhân đã chia sẻ hợp lệ.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "Ngày đầu, YYYY-MM-DD; mặc định 29 ngày trước `to`.",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "description": "Ngày cuối, YYYY-MM-DD, không sau hôm nay ở Asia/Ho_Chi_Minh; mặc định hôm nay.",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "group_by",
+            "in": "query",
+            "required": false,
+            "description": "Cách nhóm; mặc định date.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "date",
+                "medication"
+              ],
+              "default": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lịch sử của bệnh nhân được phép xem; groups rỗng khi chưa có liều; adherence_rate=null khi counted=0 (kể cả khi chỉ có liều cho_xac_nhan hoặc chua_xac_minh).",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu dữ liệu sức khỏe trong cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdherenceHistoryResponse"
+                },
+                "examples": {
+                  "family_by_date": {
+                    "summary": "Người thân xem một liều đã uống",
+                    "value": {
+                      "patient_id": "11111111-1111-4111-8111-111111111111",
+                      "from": "2026-10-01",
+                      "to": "2026-10-19",
+                      "timezone": "Asia/Ho_Chi_Minh",
+                      "as_of": "2026-10-19T12:00:00+07:00",
+                      "patient_last_synced_at": "2026-10-19T11:40:12+07:00",
+                      "summary": {
+                        "total": 1,
+                        "taken": 1,
+                        "late": 0,
+                        "missed": 0,
+                        "pending": 0,
+                        "counted": 1,
+                        "adherence_rate": 100,
+                        "unverified": 0
+                      },
+                      "group_by": "date",
+                      "groups": [
+                        {
+                          "date": "2026-10-19",
+                          "summary": {
+                            "total": 1,
+                            "taken": 1,
+                            "late": 0,
+                            "missed": 0,
+                            "pending": 0,
+                            "counted": 1,
+                            "adherence_rate": 100,
+                            "unverified": 0
+                          },
+                          "doses": [
+                            {
+                              "medication_id": 1,
+                              "medication_name": "Thuốc A",
+                              "schedule_id": 7,
+                              "scheduled_at": "2026-10-19T08:00:00+07:00",
+                              "taken_at": "2026-10-19T08:05:00+07:00",
+                              "status": "da_uong",
+                              "status_source": "recorded"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  "family_unverified": {
+                    "summary": "Điện thoại bệnh nhân chưa đồng bộ từ 07:02: liều 08:00 chưa xác minh, không có cảnh báo",
+                    "value": {
+                      "patient_id": "11111111-1111-4111-8111-111111111111",
+                      "from": "2026-10-19",
+                      "to": "2026-10-19",
+                      "timezone": "Asia/Ho_Chi_Minh",
+                      "as_of": "2026-10-19T12:00:00+07:00",
+                      "patient_last_synced_at": "2026-10-19T07:02:00+07:00",
+                      "summary": {
+                        "total": 2,
+                        "taken": 1,
+                        "late": 0,
+                        "missed": 0,
+                        "pending": 0,
+                        "unverified": 1,
+                        "counted": 1,
+                        "adherence_rate": 100
+                      },
+                      "group_by": "date",
+                      "groups": [
+                        {
+                          "date": "2026-10-19",
+                          "summary": {
+                            "total": 2,
+                            "taken": 1,
+                            "late": 0,
+                            "missed": 0,
+                            "pending": 0,
+                            "unverified": 1,
+                            "counted": 1,
+                            "adherence_rate": 100
+                          },
+                          "doses": [
+                            {
+                              "medication_id": 1,
+                              "medication_name": "Thuốc A",
+                              "schedule_id": 7,
+                              "scheduled_at": "2026-10-19T07:00:00+07:00",
+                              "taken_at": "2026-10-19T06:55:00+07:00",
+                              "status": "da_uong",
+                              "status_source": "recorded"
+                            },
+                            {
+                              "medication_id": 2,
+                              "medication_name": "Thuốc B",
+                              "schedule_id": 9,
+                              "scheduled_at": "2026-10-19T08:00:00+07:00",
+                              "taken_at": null,
+                              "status": "chua_xac_minh",
+                              "status_source": "inferred"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu/sai bearer token, phiên hết hạn hoặc tài khoản đã bị xóa; không đọc lịch sử.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu dữ liệu sức khỏe trong cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "Missing bearer token"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Không đủ quyền; không đọc lịch sử. Trường hợp patient tồn tại ghi audit denied; patient không tồn tại không ghi audit do ràng buộc khóa ngoại. Chính chủ thiếu health_data: consent_revoked. Người thân thiếu liên kết, chia sẻ hoặc một consent, hoặc admin: khong_co_quyen.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu dữ liệu sức khỏe trong cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "family_denied": {
+                    "value": {
+                      "detail": "khong_co_quyen"
+                    }
+                  },
+                  "self_consent_revoked": {
+                    "value": {
+                      "detail": "consent_revoked"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Query sai định dạng: ValidationError. Khoảng ngày không hợp lệ, quá 90 ngày hoặc ngày cuối ở tương lai: ErrorDetail.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu dữ liệu sức khỏe trong cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    }
+                  ]
+                },
+                "examples": {
+                  "invalid_uuid": {
+                    "value": {
+                      "detail": [
+                        {
+                          "loc": [
+                            "query",
+                            "patient_id"
+                          ],
+                          "msg": "Input should be a valid UUID",
+                          "type": "uuid_parsing"
+                        }
+                      ]
+                    }
+                  },
+                  "range_too_large": {
+                    "value": {
+                      "detail": "adherence_range_too_large"
+                    }
+                  },
+                  "invalid_range": {
+                    "value": {
+                      "detail": "invalid_adherence_date_range"
+                    }
+                  },
+                  "future_end": {
+                    "value": {
+                      "detail": "adherence_end_date_in_future"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Lỗi nội bộ, gồm lỗi kiểm quyền hoặc ghi access log; không trả dữ liệu sức khỏe.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu dữ liệu sức khỏe trong cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "Internal server error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/doses/batch": {
+      "post": {
+        "tags": [
+          "adherence"
+        ],
+        "operationId": "confirmDoseBatch",
+        "summary": "Gửi mẻ xác nhận liều của chính mình (đồng bộ hàng chờ)",
+        "description": "Chỉ người bệnh ghi liều của chính mình (QD-27); người thân và admin nhận `forbidden_schedule` ở từng mục. Mỗi mục xử lý độc lập và trả kết quả riêng; HTTP 200 kể cả khi có mục lỗi (QD-07, Ch.10). Toàn bộ mẻ nằm trong một transaction: lỗi hạ tầng (503) thì không mục nào được ghi.\n\n**Trạng thái tính từ taken_at** (QD-03, QD-10), so tới micro giây, không làm tròn:\n- taken_at < scheduled_at − 30': lỗi `taken_at_too_early`, không ghi.\n- [scheduled_at − 30', scheduled_at + 30']: `da_uong`.\n- (scheduled_at + 30', scheduled_at + 120']: `uong_tre`.\n- > scheduled_at + 120': ghi `bo_lo`, không lưu taken_at, `adherence_counted = false`.\n\n**Liều đã có bản ghi** (khóa `(schedule_id, scheduled_at)`):\n- Đang `bo_lo` (Worker đã ghi sau khi xác minh, hoặc xác nhận trước đó quá 120'): cập nhật theo trạng thái tính từ taken_at của mục này. `da_uong`/`uong_tre` thay thế `bo_lo`; `bo_lo` thì giữ. (Task 3.19: trước đây luôn thành `uong_tre`.)\n- Đang `da_uong`/`uong_tre`: không ghi đè; trả `synced` với trạng thái đã lưu.\n\n**Idempotency:** gửi lại cùng `client_uuid` với cùng nội dung trả lại kết quả đã lưu; khác nội dung thì `client_uuid_conflict` (409), giữ bản đã lưu (QD-14). Chạy đồng thời với Worker quét bỏ lỡ: luôn còn đúng một bản ghi và trạng thái cuối tính theo taken_at, bất kể bên nào commit trước.\n\n**Phía client** (QD-07, QD-18): một mẻ đang gửi mỗi thiết bị. Mục `synced` đánh dấu đã lưu máy chủ. Mục lỗi 404/409/422 được giữ lại với lỗi, không tự gửi lại. Lỗi 403 ở một mục thì dừng tự gửi. 401, 503, 408, 429, lỗi mạng thì thử lại có giãn cách. Khi **mọi** mục trong hàng chờ đã có kết quả cuối (`synced` hoặc lỗi 404/409/422), gọi `POST /doses/sync-checkpoints`.\n\nNgười gọi được kiểm quyền ở từng mục theo PEP; không cache quyết định.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DoseConfirmationBatchRequest"
+              },
+              "examples": {
+                "offline_queue": {
+                  "summary": "Hai xác nhận trong hàng chờ offline",
+                  "value": [
+                    {
+                      "client_uuid": "3f9c2a1e-8b7d-4c6a-9e5f-1a2b3c4d5e6f",
+                      "schedule_id": 301,
+                      "scheduled_at": "2026-10-05T01:00:00Z",
+                      "taken_at": "2026-10-05T01:10:00Z"
+                    },
+                    {
+                      "client_uuid": "7a8b9c0d-1e2f-4a3b-8c4d-5e6f7a8b9c0d",
+                      "schedule_id": 302,
+                      "scheduled_at": "2026-10-05T13:00:00Z",
+                      "taken_at": "2026-10-05T12:20:00Z"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Mẻ đã xử lý; xem kết quả từng mục.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DoseConfirmationBatchResponse"
+                },
+                "examples": {
+                  "partial": {
+                    "summary": "Mục 1: liều 08:00 Worker đã ghi bo_lo, xác nhận offline 08:10 tới lúc 15:00 → da_uong. Mục 2: uống quá sớm.",
+                    "value": {
+                      "items": [
+                        {
+                          "client_uuid": "3f9c2a1e-8b7d-4c6a-9e5f-1a2b3c4d5e6f",
+                          "schedule_id": 301,
+                          "scheduled_at": "2026-10-05T01:00:00Z",
+                          "result": "synced",
+                          "dose_log_id": 9001,
+                          "dose_status": "da_uong",
+                          "adherence_counted": true,
+                          "synced_at": "2026-10-05T08:00:03Z"
+                        },
+                        {
+                          "client_uuid": "7a8b9c0d-1e2f-4a3b-8c4d-5e6f7a8b9c0d",
+                          "schedule_id": 302,
+                          "scheduled_at": "2026-10-05T13:00:00Z",
+                          "result": "failed",
+                          "error": {
+                            "code": "taken_at_too_early",
+                            "http_status": 422,
+                            "detail": "taken_at must not be earlier than scheduled_at minus 30 minutes"
+                          }
+                        }
+                      ],
+                      "summary": {
+                        "total": 2,
+                        "synced": 1,
+                        "failed": 1
+                      }
+                    }
+                  },
+                  "after_120": {
+                    "summary": "Xác nhận sau 120 phút: lưu bo_lo, không tính tuân thủ",
+                    "value": {
+                      "items": [
+                        {
+                          "client_uuid": "5b6c7d8e-9f0a-4b1c-8d2e-3f4a5b6c7d8e",
+                          "schedule_id": 301,
+                          "scheduled_at": "2026-10-06T01:00:00Z",
+                          "result": "synced",
+                          "dose_log_id": 9002,
+                          "dose_status": "bo_lo",
+                          "adherence_counted": false,
+                          "synced_at": "2026-10-06T04:00:00Z"
+                        }
+                      ],
+                      "summary": {
+                        "total": 1,
+                        "synced": 1,
+                        "failed": 0
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "422": {
+            "description": "Body sai cấu trúc (không phải mảng, rỗng, quá 50 mục, thiếu field, sai kiểu, field lạ): ValidationError; không mục nào được xử lý.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                "example": {
+                  "detail": [
+                    {
+                      "loc": [
+                        "body",
+                        0,
+                        "client_uuid"
+                      ],
+                      "msg": "Field required",
+                      "type": "missing"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Lỗi CSDL hoặc ghi nhật ký truy cập; transaction rollback, không có gì được ghi. Client thử lại sau với giãn cách (QD-07), giữ nguyên nội dung.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "service_unavailable"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/doses/sync-checkpoints": {
+      "post": {
+        "tags": [
+          "adherence"
+        ],
+        "operationId": "recordDoseSyncCheckpoint",
+        "summary": "Báo server: điện thoại này đã gửi hết hàng chờ xác nhận liều",
+        "description": "Bằng chứng để server phân biệt \"bệnh nhân bỏ lỡ liều\" với \"điện thoại chưa gửi xác nhận lên\" (task 3.19). Server ghi **giờ của server** lúc nhận request làm checkpoint của tài khoản người gọi; không nhận giờ từ client. Checkpoint không bao giờ lùi. Mỗi tài khoản một checkpoint: thiết bị nào gọi cũng cập nhật (một máy là đủ).\n\n**Ý nghĩa:** liều có hạn chót D = scheduled_at + 120' ≤ checkpoint mà chưa có bản ghi thì coi là **bỏ lỡ đã xác minh**: Worker ghi `bo_lo` ở lượt quét kế tiếp (tối đa 15 phút) và báo người thân đủ quyền. Liều có D > checkpoint là `chua_xac_minh` trong `GET /adherence`, không ghi gì, không cảnh báo.\n\n**Client phải gọi** sau khi mọi mục trong hàng chờ đã có kết quả cuối từ `POST /doses/batch` (`synced`, hoặc lỗi 404/409/422 được giữ lại), kể cả khi hàng chờ trống, vào các lúc: mở app khi đã đăng nhập; quay lại app; có mạng lại; mỗi 15 phút khi app đang mở; nhận push `sync_request` (bên dưới). **Không** gọi khi còn mục đang lỗi mạng, 5xx, 408, 429, 401 hoặc 403, vì checkpoint sai làm người thân bị báo nhầm.\n\n**Push `sync_request`** (FCM data message, chỉ Android, không có khối `notification`): server gửi tới các token Android của bệnh nhân ở lượt quét đầu tiên sau hạn chót của một liều chưa xác minh. Payload: `data = {\"type\": \"sync_request\"}`, ưu tiên cao, `collapse_key = \"sync_request\"`, TTL mặc định của FCM; không chứa dữ liệu sức khỏe (CD6). App nhận khi chạy nền thì: không hiện thông báo; nếu không có phiên đăng nhập hợp lệ thì bỏ qua; ngược lại gửi hàng chờ rồi gọi endpoint này theo quy tắc trên. Push cảnh báo người thân hiện có không có trường `type`; app phân biệt bằng `data.type`. iOS không nhận push này (BS-03).\n\nPhân quyền: chính chủ ghi dữ liệu liều của mình (PEP, quyền ghi, cần consent `health_data`); admin nhận 403 `khong_co_quyen`. Không đọc hay trả dữ liệu sức khỏe; thành công không ghi nhật ký truy cập (giống chính chủ gửi `POST /doses/batch`). Không nhận body. Idempotent: gửi lại bao nhiêu lần cũng an toàn.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Đã ghi checkpoint; không có body."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "`consent_revoked`: người gọi chưa có (hoặc đã rút) consent `health_data`; không ghi checkpoint. `khong_co_quyen`: tài khoản admin. Lần bị từ chối được ghi nhật ký theo quy tắc chung của PEP.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "consent_revoked": {
+                    "value": {
+                      "detail": "consent_revoked"
+                    }
+                  },
+                  "admin": {
+                    "value": {
+                      "detail": "khong_co_quyen"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Lỗi CSDL hoặc ghi nhật ký truy cập; transaction rollback, không có gì được ghi. Client thử lại sau với giãn cách (QD-07), giữ nguyên nội dung.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "service_unavailable"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -7241,6 +7772,536 @@
             "type": "string",
             "format": "date-time",
             "description": "Thời điểm máy chủ hủy liên kết lần đầu, ISO 8601 có offset. Giữ nguyên khi gửi lại."
+          }
+        }
+      },
+      "AdherenceSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "total",
+          "taken",
+          "late",
+          "missed",
+          "pending",
+          "unverified",
+          "counted",
+          "adherence_rate"
+        ],
+        "properties": {
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "taken": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "late": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "missed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "pending": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "unverified": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Số liều chua_xac_minh (task 3.19). Không vào mẫu số của adherence_rate."
+          },
+          "counted": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "adherence_rate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100,
+            "multipleOf": 0.01,
+            "description": "100 × (taken + late) / counted, làm tròn 2 chữ số; null khi counted = 0. Liều cho_xac_nhan và chua_xac_minh không vào mẫu số."
+          }
+        },
+        "description": "counted = taken + late + missed; total = counted + pending + unverified."
+      },
+      "AdherenceDose": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "medication_id",
+          "medication_name",
+          "schedule_id",
+          "scheduled_at",
+          "taken_at",
+          "status",
+          "status_source"
+        ],
+        "properties": {
+          "medication_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "exclusiveMaximum": 9223372036854775808
+          },
+          "medication_name": {
+            "type": "string"
+          },
+          "schedule_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "exclusiveMaximum": 9223372036854775808
+          },
+          "scheduled_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "RFC 3339, offset Asia/Ho_Chi_Minh."
+          },
+          "taken_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "RFC 3339, offset Asia/Ho_Chi_Minh; null nếu chưa có xác nhận hợp lệ."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "da_uong",
+              "uong_tre",
+              "bo_lo",
+              "cho_xac_nhan",
+              "chua_xac_minh"
+            ]
+          },
+          "status_source": {
+            "type": "string",
+            "enum": [
+              "recorded",
+              "inferred"
+            ],
+            "description": "Liều đã xác nhận: recorded. Liều cho_xac_nhan và chua_xac_minh: inferred. Liều bỏ lỡ có thể recorded hoặc inferred."
+          }
+        },
+        "description": "da_uong/uong_tre có taken_at và status_source=recorded; bo_lo/cho_xac_nhan/chua_xac_minh có taken_at=null; cho_xac_nhan và chua_xac_minh có status_source=inferred."
+      },
+      "AdherenceDateGroup": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "date",
+          "summary",
+          "doses"
+        ],
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/AdherenceSummary"
+          },
+          "doses": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/AdherenceDose"
+            }
+          }
+        }
+      },
+      "AdherenceMedicationGroup": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "medication_id",
+          "medication_name",
+          "summary",
+          "doses"
+        ],
+        "properties": {
+          "medication_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "exclusiveMaximum": 9223372036854775808
+          },
+          "medication_name": {
+            "type": "string"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/AdherenceSummary"
+          },
+          "doses": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/AdherenceDose"
+            }
+          }
+        }
+      },
+      "AdherenceByDateResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "patient_id",
+          "from",
+          "to",
+          "timezone",
+          "as_of",
+          "patient_last_synced_at",
+          "summary",
+          "group_by",
+          "groups"
+        ],
+        "properties": {
+          "patient_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "from": {
+            "type": "string",
+            "format": "date"
+          },
+          "to": {
+            "type": "string",
+            "format": "date"
+          },
+          "timezone": {
+            "type": "string",
+            "const": "Asia/Ho_Chi_Minh"
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Thời điểm chốt dữ liệu, RFC 3339 với offset Asia/Ho_Chi_Minh."
+          },
+          "patient_last_synced_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Lần gần nhất bất kỳ điện thoại nào của bệnh nhân gọi POST /doses/sync-checkpoints (giờ server), RFC 3339 với offset Asia/Ho_Chi_Minh; null nếu chưa từng. Dùng để phân biệt chua_xac_minh với bo_lo."
+          },
+          "summary": {
+            "$ref": "#/components/schemas/AdherenceSummary"
+          },
+          "group_by": {
+            "type": "string",
+            "const": "date"
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdherenceDateGroup"
+            },
+            "description": "Ngày giảm dần; liều trong mỗi nhóm theo scheduled_at, medication_id, schedule_id tăng dần."
+          }
+        }
+      },
+      "AdherenceByMedicationResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "patient_id",
+          "from",
+          "to",
+          "timezone",
+          "as_of",
+          "patient_last_synced_at",
+          "summary",
+          "group_by",
+          "groups"
+        ],
+        "properties": {
+          "patient_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "from": {
+            "type": "string",
+            "format": "date"
+          },
+          "to": {
+            "type": "string",
+            "format": "date"
+          },
+          "timezone": {
+            "type": "string",
+            "const": "Asia/Ho_Chi_Minh"
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Thời điểm chốt dữ liệu, RFC 3339 với offset Asia/Ho_Chi_Minh."
+          },
+          "patient_last_synced_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Lần gần nhất bất kỳ điện thoại nào của bệnh nhân gọi POST /doses/sync-checkpoints (giờ server), RFC 3339 với offset Asia/Ho_Chi_Minh; null nếu chưa từng. Dùng để phân biệt chua_xac_minh với bo_lo."
+          },
+          "summary": {
+            "$ref": "#/components/schemas/AdherenceSummary"
+          },
+          "group_by": {
+            "type": "string",
+            "const": "medication"
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdherenceMedicationGroup"
+            },
+            "description": "medication_id tăng dần; liều trong mỗi nhóm theo scheduled_at, medication_id, schedule_id tăng dần."
+          }
+        }
+      },
+      "AdherenceHistoryResponse": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/AdherenceByDateResponse"
+          },
+          {
+            "$ref": "#/components/schemas/AdherenceByMedicationResponse"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "group_by",
+          "mapping": {
+            "date": "#/components/schemas/AdherenceByDateResponse",
+            "medication": "#/components/schemas/AdherenceByMedicationResponse"
+          }
+        }
+      },
+      "DoseConfirmationRequestItem": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "client_uuid",
+          "schedule_id",
+          "scheduled_at",
+          "taken_at"
+        ],
+        "properties": {
+          "client_uuid": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Khóa idempotency do app sinh, giữ nguyên khi gửi lại (QD-07, QD-14)."
+          },
+          "schedule_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "description": "`id` của đúng phiên bản lịch chứa giờ dự kiến của liều, kể cả lịch đã đóng (xem GET /patients/{patient_id}/schedules)."
+          },
+          "scheduled_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Giờ dự kiến của liều: ngày theo Asia/Ho_Chi_Minh + intake_time (giữ giây), đổi ra UTC. Phải trùng tuyệt đối với mốc server sinh ra để khử trùng theo (schedule_id, scheduled_at); server dùng nguyên độ chính xác nhận được, không làm tròn."
+          },
+          "taken_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Thời điểm uống khai báo, có offset. Không được ở tương lai so với giờ server; không sớm hơn scheduled_at − 30 phút."
+          }
+        }
+      },
+      "DoseConfirmationBatchRequest": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 50,
+        "items": {
+          "$ref": "#/components/schemas/DoseConfirmationRequestItem"
+        },
+        "description": "Tối đa 50 bản ghi mỗi mẻ (QD-18)."
+      },
+      "DoseConfirmationItemError": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "http_status",
+          "detail"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "schedule_not_found",
+              "forbidden_schedule",
+              "taken_at_in_future",
+              "taken_at_too_early",
+              "client_uuid_conflict"
+            ],
+            "description": "Mã ổn định để client so khớp:\n- `schedule_not_found` (404): không có lịch với schedule_id này.\n- `forbidden_schedule` (403): lịch không thuộc người gọi, người gọi thiếu consent `health_data`, hoặc là admin.\n- `taken_at_in_future` (422): taken_at sau giờ server.\n- `taken_at_too_early` (422): taken_at sớm hơn scheduled_at − 30 phút (QD-01); không ghi gì, liều được coi như chưa có xác nhận.\n- `client_uuid_conflict` (409): client_uuid đã dùng cho một xác nhận khác (QD-14); giữ bản đã lưu."
+          },
+          "http_status": {
+            "type": "integer",
+            "enum": [
+              403,
+              404,
+              409,
+              422
+            ]
+          },
+          "detail": {
+            "type": "string",
+            "description": "Câu mô tả cho người phát triển; client không so khớp nội dung."
+          }
+        }
+      },
+      "DoseConfirmationResultItem": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "client_uuid",
+          "schedule_id",
+          "scheduled_at",
+          "result"
+        ],
+        "properties": {
+          "client_uuid": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "schedule_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "scheduled_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Giờ dự kiến của bản ghi liều, giữ nguyên độ chính xác."
+          },
+          "result": {
+            "type": "string",
+            "enum": [
+              "synced",
+              "failed"
+            ]
+          },
+          "dose_log_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Có khi result = synced."
+          },
+          "dose_status": {
+            "type": "string",
+            "enum": [
+              "da_uong",
+              "uong_tre",
+              "bo_lo"
+            ],
+            "description": "Có khi result = synced: trạng thái **đã lưu** của liều sau request (có thể khác trạng thái tính từ taken_at của mục này nếu liều đã được xác nhận trước đó)."
+          },
+          "adherence_counted": {
+            "type": "boolean",
+            "description": "Có khi result = synced; false khi dose_status = bo_lo."
+          },
+          "synced_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Có khi result = synced: thời điểm server ghi nhận."
+          },
+          "error": {
+            "$ref": "#/components/schemas/DoseConfirmationItemError"
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "result": {
+                  "const": "synced"
+                }
+              },
+              "required": [
+                "result"
+              ]
+            },
+            "then": {
+              "required": [
+                "dose_log_id",
+                "dose_status",
+                "adherence_counted",
+                "synced_at"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "result": {
+                  "const": "failed"
+                }
+              },
+              "required": [
+                "result"
+              ]
+            },
+            "then": {
+              "required": [
+                "error"
+              ]
+            }
+          }
+        ],
+        "description": "Field vắng mặt (không phải null) khi không áp dụng."
+      },
+      "DoseConfirmationBatchSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "total",
+          "synced",
+          "failed"
+        ],
+        "properties": {
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "synced": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "failed": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "description": "total = synced + failed = số mục trong request."
+      },
+      "DoseConfirmationBatchResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "summary"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DoseConfirmationResultItem"
+            },
+            "description": "Một kết quả cho mỗi mục, cùng thứ tự với request."
+          },
+          "summary": {
+            "$ref": "#/components/schemas/DoseConfirmationBatchSummary"
           }
         }
       }
