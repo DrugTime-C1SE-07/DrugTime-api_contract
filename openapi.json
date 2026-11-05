@@ -5932,6 +5932,71 @@
           }
         }
       }
+    },
+    "/patients/{patient_id}/interaction-checks": {
+      "parameters": [
+        {
+          "name": "patient_id",
+          "in": "path",
+          "required": true,
+          "description": "Id tài khoản người bệnh (UUID). Sai định dạng trả 422 `ValidationError`.",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "tags": [
+          "interaction"
+        ],
+        "operationId": "checkPatientInteractions",
+        "summary": "Kiểm tra tương tác thuốc của người bệnh (PB24, Task 4.02)",
+        "description": "Kiểm tra tương tác giữa thuốc đang thêm/sửa với danh sách thuốc đang dùng của người bệnh (hoặc giữa danh sách thuốc chỉ định). Quyền truy cập: Scope.INTERACTIONS (Action.READ). Trả về 3 trạng thái CD7 và disclaimer bắt buộc NFR03.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InteractionCheckRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Kết quả kiểm tra tương tác thuốc.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InteractionCheckResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "description": "`patient_id` không phải UUID hoặc dữ liệu request không hợp lệ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -8747,6 +8812,196 @@
               "$ref": "#/components/schemas/OcrMatchReason"
             },
             "description": "Không có thứ tự. Có thể rỗng."
+          }
+        }
+      },
+      "InteractionCheckStatus": {
+        "type": "string",
+        "enum": [
+          "co_tuong_tac",
+          "da_kiem_tra_khong_thay",
+          "khong_du_du_lieu"
+        ],
+        "description": "Kết quả kiểm tra tương tác thuốc (CD7):\n- `co_tuong_tac`: Có ít nhất 1 cặp tương tác phát hiện được\n- `da_kiem_tra_khong_thay`: Đã kiểm tra đối chiếu nhưng không có xung đột\n- `khong_du_du_lieu`: Thuốc không có thông tin hoạt chất để đối soát"
+      },
+      "PatientInteractionFinding": {
+        "type": "object",
+        "required": [
+          "ingredient_a_id",
+          "ingredient_a_name",
+          "ingredient_b_name",
+          "severity_level",
+          "interaction_type",
+          "handling_type",
+          "description",
+          "warning_message",
+          "source"
+        ],
+        "properties": {
+          "ingredient_a_id": {
+            "type": "integer",
+            "description": "ID hoạt chất thứ nhất trong cặp tương tác."
+          },
+          "ingredient_a_name": {
+            "type": "string",
+            "description": "Tên hoạt chất thứ nhất."
+          },
+          "ingredient_b_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "ID hoạt chất thứ hai trong danh mục (null nếu là tên hoạt chất ngoài danh mục)."
+          },
+          "ingredient_b_name": {
+            "type": "string",
+            "description": "Tên hoạt chất thứ hai."
+          },
+          "medication_a_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "ID thuốc trong danh mục chứa hoạt chất thứ nhất (nếu có)."
+          },
+          "medication_a_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Tên thương mại của thuốc chứa hoạt chất thứ nhất."
+          },
+          "medication_b_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "ID thuốc trong danh mục chứa hoạt chất thứ hai (nếu có)."
+          },
+          "medication_b_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Tên thương mại của thuốc chứa hoạt chất thứ hai."
+          },
+          "severity_level": {
+            "$ref": "#/components/schemas/InteractionSeverity"
+          },
+          "interaction_type": {
+            "$ref": "#/components/schemas/InteractionType"
+          },
+          "handling_type": {
+            "$ref": "#/components/schemas/HandlingType"
+          },
+          "min_interval_hours": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Khoảng cách tối thiểu giữa các lần uống (giờ), nếu có."
+          },
+          "description": {
+            "type": "string",
+            "description": "Mô tả cơ chế và hậu quả tương tác."
+          },
+          "warning_message": {
+            "type": "string",
+            "description": "Thông báo cảnh báo lâm sàng định dạng sẵn cho người dùng."
+          },
+          "source": {
+            "type": "string",
+            "description": "Tài liệu hoặc văn bản nguồn quy định tương tác (ví dụ: Dược thư Quốc gia, QĐ BYT)."
+          }
+        }
+      },
+      "InsufficientDataMedication": {
+        "type": "object",
+        "required": [
+          "medication_id",
+          "medication_name",
+          "reason"
+        ],
+        "properties": {
+          "medication_id": {
+            "type": "integer",
+            "description": "ID thuốc trong danh mục."
+          },
+          "medication_name": {
+            "type": "string",
+            "description": "Tên thương mại của thuốc."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Lý do chưa đủ dữ liệu đối soát (ví dụ: chưa map hoạt chất)."
+          }
+        }
+      },
+      "InteractionCheckRequest": {
+        "type": "object",
+        "properties": {
+          "candidate_medication_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "ID thuốc mới hoặc đang sửa trong danh mục cần kiểm tra đối chiếu."
+          },
+          "medication_ids": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "integer"
+            },
+            "description": "Danh sách ID thuốc trong danh mục cần đối soát cùng nhau (nếu bỏ trống, đối soát với thuốc đang dùng của người bệnh)."
+          },
+          "candidate_dose_amount": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Liều dùng của thuốc ứng viên mỗi lần (phục vụ đối soát ngưỡng liều)."
+          },
+          "candidate_dose_unit": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Đơn vị liều dùng (ví dụ: mg, ml, viên)."
+          }
+        }
+      },
+      "InteractionCheckResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "interactions",
+          "insufficient_data_medications",
+          "disclaimer"
+        ],
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/InteractionCheckStatus"
+          },
+          "interactions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PatientInteractionFinding"
+            },
+            "description": "Danh sách các tương tác thuốc phát hiện được."
+          },
+          "insufficient_data_medications": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InsufficientDataMedication"
+            },
+            "description": "Danh sách thuốc chưa đủ dữ liệu hoạt chất để kiểm tra."
+          },
+          "disclaimer": {
+            "type": "string",
+            "description": "Cảnh báo pháp lý y tế bắt buộc (NFR03). Luôn có trong mọi phản hồi."
           }
         }
       }
