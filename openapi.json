@@ -2150,6 +2150,302 @@
         }
       }
     },
+    "/catalog/medications/match": {
+      "post": {
+        "tags": [
+          "catalog"
+        ],
+        "operationId": "matchCatalogMedicationsFromOcr",
+        "summary": "Gợi ý thuốc trong danh mục từ văn bản OCR",
+        "description": "Gợi ý thuốc trong danh mục từ văn bản OCR của **một** vỉ/hộp thuốc (PB31, task 4.13). Văn bản do ML Kit đọc trên thiết bị; ảnh không rời thiết bị. Server không lưu văn bản và không ghi nó vào log.\n\nDùng sau khi quét: kết quả chỉ là gợi ý. Người dùng luôn phải kiểm tra và xác nhận trước khi thêm thuốc (QD-39); thêm thuốc vẫn qua `POST /medications` với `medication_id` = `id` của ứng viên đã chọn.\n\n**Trạng thái** (`status`), xét theo thứ tự:\n1. `no_match`: không có ứng viên đủ tin cậy tối thiểu, hoặc OCR đọc được hàm lượng mà danh mục không có hàm lượng đó cho tên thuốc này (không gán thuốc gần giống, QD-39). `items` rỗng. App mở tìm thủ công (`GET /catalog/medications`) với `suggested_query` điền sẵn.\n2. `low_confidence`: có ứng viên nhưng không đủ chắc để chọn sẵn: điểm dưới ngưỡng, hàm lượng xung đột, tên có nhiều hàm lượng mà OCR không đọc được hàm lượng, hai ứng viên khác nhau có điểm quá sát (thuốc nhìn giống/đọc giống), hoặc tra cứu bị cắt. App hiển thị `items` dạng \"có thể là\", **không chọn sẵn**, kèm lối vào tìm thủ công với `suggested_query`.\n3. `matched`: ứng viên đầu đủ tin cậy. `preselected_id` = `items[0].id`; app chọn sẵn ứng viên này nhưng người dùng vẫn phải bấm xác nhận. Khi `reasons` có `strength_unverified`, app phải nhắc người dùng đối chiếu hàm lượng in trên vỉ.\n\nNgưỡng và trọng số là cấu hình server, có thể đổi mà không đổi contract. Client không tự suy trạng thái từ `score`; chỉ dùng `status`, `preselected_id` và `reasons`.\n\n**Thứ tự `items`**: `score` giảm dần, rồi `id` tăng dần. Cùng văn bản và cùng danh mục luôn cho cùng kết quả. Các thuốc trùng tên, hàm lượng và dạng bào chế (khác số đăng ký) có thể cùng điểm; khi đó `reasons` có `tie`, `items` chứa cả nhóm (trong giới hạn `limit`) và app hiển thị cả nhóm. Nếu `status` = `matched`, `preselected_id` vẫn là `items[0].id` (id nhỏ nhất trong nhóm) và người dùng có thể đổi sang thuốc khác trong nhóm trước khi xác nhận.\n\nBỏ qua thuốc đã bị gỡ khỏi danh mục.\n\nPhân quyền: mọi phiên hợp lệ (mobile hoặc admin_web). Danh mục không phải dữ liệu sức khỏe, không kiểm consent và không ghi nhật ký truy cập.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OcrMatchRequest"
+              },
+              "examples": {
+                "blister": {
+                  "summary": "Văn bản OCR nhiều dòng của một vỉ",
+                  "value": {
+                    "text": "PANADOL EXTRA\nParacetamol 500mg\nCaffeine 65mg\nPANADOL EXTRA\nSĐK: VN-12345-21\nHSD 12/2027",
+                    "limit": 5
+                  }
+                },
+                "name_only": {
+                  "summary": "Chỉ đọc được tên, không đọc được hàm lượng",
+                  "value": {
+                    "text": "PARACETAMOL\nLô 2301 HSD 05/2027"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Kết quả so khớp. Luôn 200 khi request hợp lệ, kể cả `no_match`.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Kết quả cho biết người dùng đang cầm thuốc gì; không lưu trong cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OcrMatchResult"
+                },
+                "examples": {
+                  "matched": {
+                    "summary": "Khớp chắc chắn: chọn sẵn, người dùng vẫn xác nhận",
+                    "value": {
+                      "status": "matched",
+                      "items": [
+                        {
+                          "id": 2101,
+                          "name": "Panadol Extra",
+                          "active_ingredient": "Paracetamol; Cafein",
+                          "strength_text": "500 mg; 65 mg",
+                          "dosage_form": "Viên nén bao phim",
+                          "has_active_ingredients": true,
+                          "score": 0.934
+                        }
+                      ],
+                      "preselected_id": 2101,
+                      "suggested_query": null,
+                      "reasons": []
+                    }
+                  },
+                  "matched_strength_unverified": {
+                    "summary": "Chỉ đọc được tên; tên có một hàm lượng duy nhất trong danh mục",
+                    "value": {
+                      "status": "matched",
+                      "items": [
+                        {
+                          "id": 4410,
+                          "name": "Amlodipin Stada 5mg",
+                          "active_ingredient": "Amlodipin besilat",
+                          "strength_text": "5 mg",
+                          "dosage_form": "Viên nén",
+                          "has_active_ingredients": true,
+                          "score": 0.786
+                        }
+                      ],
+                      "preselected_id": 4410,
+                      "suggested_query": null,
+                      "reasons": [
+                        "strength_unverified"
+                      ]
+                    }
+                  },
+                  "multiple_strengths": {
+                    "summary": "Chỉ đọc được tên; tên có nhiều hàm lượng: người dùng tự chọn",
+                    "value": {
+                      "status": "low_confidence",
+                      "items": [
+                        {
+                          "id": 3301,
+                          "name": "Paracetamol 250mg",
+                          "active_ingredient": "Paracetamol",
+                          "strength_text": "250 mg",
+                          "dosage_form": "Thuốc bột sủi bọt",
+                          "has_active_ingredients": true,
+                          "score": 0.712
+                        },
+                        {
+                          "id": 3302,
+                          "name": "Paracetamol 500mg",
+                          "active_ingredient": "Paracetamol",
+                          "strength_text": "500 mg",
+                          "dosage_form": "Viên nén",
+                          "has_active_ingredients": true,
+                          "score": 0.712
+                        },
+                        {
+                          "id": 3303,
+                          "name": "Paracetamol 650mg",
+                          "active_ingredient": "Paracetamol",
+                          "strength_text": "650 mg",
+                          "dosage_form": "Viên nén",
+                          "has_active_ingredients": true,
+                          "score": 0.712
+                        }
+                      ],
+                      "preselected_id": null,
+                      "suggested_query": "paracetamol",
+                      "reasons": [
+                        "multiple_strengths"
+                      ]
+                    }
+                  },
+                  "lasa": {
+                    "summary": "Hai thuốc tên gần giống, điểm quá sát",
+                    "value": {
+                      "status": "low_confidence",
+                      "items": [
+                        {
+                          "id": 5201,
+                          "name": "Losartan 50mg",
+                          "active_ingredient": "Losartan kali",
+                          "strength_text": "50 mg",
+                          "dosage_form": "Viên nén bao phim",
+                          "has_active_ingredients": true,
+                          "score": 0.741
+                        },
+                        {
+                          "id": 5240,
+                          "name": "Lostatin 50mg",
+                          "active_ingredient": "Lovastatin",
+                          "strength_text": "50 mg",
+                          "dosage_form": "Viên nén",
+                          "has_active_ingredients": true,
+                          "score": 0.722
+                        }
+                      ],
+                      "preselected_id": null,
+                      "suggested_query": "losartan",
+                      "reasons": [
+                        "lasa_close"
+                      ]
+                    }
+                  },
+                  "strength_mismatch": {
+                    "summary": "OCR đọc 500 mg nhưng danh mục chỉ có 250 mg: không gợi ý thuốc khác hàm lượng",
+                    "value": {
+                      "status": "no_match",
+                      "items": [],
+                      "preselected_id": null,
+                      "suggested_query": "cefuroxim",
+                      "reasons": [
+                        "strength_mismatch"
+                      ]
+                    }
+                  },
+                  "nothing_readable": {
+                    "summary": "Không có tên nào dùng được",
+                    "value": {
+                      "status": "no_match",
+                      "items": [],
+                      "preselected_id": null,
+                      "suggested_query": null,
+                      "reasons": [
+                        "below_threshold"
+                      ]
+                    }
+                  },
+                  "matched_tie": {
+                    "summary": "Nhiều thuốc cùng tên, hàm lượng, dạng bào chế (khác số đăng ký): chọn sẵn phần tử đầu, hiện cả nhóm để người dùng đổi",
+                    "value": {
+                      "status": "matched",
+                      "items": [
+                        {
+                          "id": 6101,
+                          "name": "Cefuroxim 500mg",
+                          "active_ingredient": "Cefuroxim axetil",
+                          "strength_text": "500 mg",
+                          "dosage_form": "Viên nén bao phim",
+                          "has_active_ingredients": true,
+                          "score": 0.881
+                        },
+                        {
+                          "id": 6188,
+                          "name": "Cefuroxim 500mg",
+                          "active_ingredient": "Cefuroxim axetil",
+                          "strength_text": "500 mg",
+                          "dosage_form": "Viên nén bao phim",
+                          "has_active_ingredients": true,
+                          "score": 0.881
+                        },
+                        {
+                          "id": 6230,
+                          "name": "Cefuroxim 500mg",
+                          "active_ingredient": "Cefuroxim axetil",
+                          "strength_text": "500 mg",
+                          "dosage_form": "Viên nén bao phim",
+                          "has_active_ingredients": true,
+                          "score": 0.881
+                        }
+                      ],
+                      "preselected_id": 6101,
+                      "suggested_query": null,
+                      "reasons": [
+                        "tie"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "422": {
+            "description": "Body sai cấu trúc: thiếu `text`, `text` rỗng, toàn khoảng trắng hoặc dài quá 2000 ký tự; `limit` ngoài 1–10 hoặc sai kiểu; field lạ. `detail` là `ValidationError`.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Kết quả cho biết người dùng đang cầm thuốc gì; không lưu trong cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                "example": {
+                  "detail": [
+                    {
+                      "loc": [
+                        "body",
+                        "text"
+                      ],
+                      "msg": "String should have at most 2000 characters",
+                      "type": "string_too_long"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Lỗi nội bộ (ví dụ lỗi đọc CSDL). Không có gì được lưu; client cho người dùng thử lại hoặc chuyển sang tìm thủ công.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Kết quả cho biết người dùng đang cầm thuốc gì; không lưu trong cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "Internal server error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/consents": {
       "get": {
         "tags": [
@@ -8367,6 +8663,155 @@
           },
           "summary": {
             "$ref": "#/components/schemas/DoseConfirmationBatchSummary"
+          }
+        }
+      },
+      "OcrMatchRequest": {
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "additionalProperties": false,
+        "description": "Văn bản OCR của một lần quét.",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000,
+            "pattern": "\\S",
+            "description": "Văn bản thô ML Kit trả về, **giữ nguyên xuống dòng** (`\\n` hoặc `\\r\\n`) vì server dùng ranh giới dòng để gom thông tin lặp lại. Không cắt, không nối dòng, không tự chuẩn hóa. Phải có ít nhất một ký tự không phải khoảng trắng."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10,
+            "default": 5,
+            "description": "Số ứng viên tối đa trong `items`."
+          }
+        }
+      },
+      "OcrMatchStatus": {
+        "type": "string",
+        "enum": [
+          "matched",
+          "low_confidence",
+          "no_match"
+        ],
+        "description": "Xem mô tả của `POST /catalog/medications/match`."
+      },
+      "OcrMatchReason": {
+        "type": "string",
+        "description": "Mã lý do ổn định (snake_case) giải thích `status`. Client bỏ qua mã không biết.\n\n- `strength_unverified`: OCR không đọc được hàm lượng; tên thuốc chỉ có một hàm lượng trong danh mục nên vẫn chọn sẵn. App nhắc đối chiếu hàm lượng.\n- `strength_unparsed`: có chữ trông giống hàm lượng nhưng không đọc được.\n- `multiple_strengths`: OCR không có hàm lượng và tên thuốc có nhiều hàm lượng trong danh mục; `items` gồm các hàm lượng đó.\n- `strength_conflict`: OCR đọc được nhiều hàm lượng khác nhau.\n- `strength_mismatch`: OCR đọc được hàm lượng mà danh mục không có cho tên thuốc này (chỉ đi với `no_match`).\n- `lasa_close`: hai thuốc khác nhau có tên gần giống và điểm quá sát.\n- `tie`: nhiều thuốc cùng tên, hàm lượng, dạng bào chế có cùng điểm.\n- `truncated`: có quá nhiều thuốc khớp một khóa tìm, danh sách có thể chưa đầy đủ.\n- `below_threshold`: điểm cao nhất dưới ngưỡng.",
+        "enum": [
+          "strength_unverified",
+          "strength_unparsed",
+          "multiple_strengths",
+          "strength_conflict",
+          "strength_mismatch",
+          "lasa_close",
+          "tie",
+          "truncated",
+          "below_threshold"
+        ]
+      },
+      "OcrMatchCandidate": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "active_ingredient",
+          "strength_text",
+          "dosage_form",
+          "has_active_ingredients",
+          "score"
+        ],
+        "additionalProperties": false,
+        "description": "Một thuốc trong danh mục được gợi ý từ văn bản OCR. Các field hiển thị giống `CatalogMedicationSummary`.",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "active_ingredient": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Hoạt chất ghi trong danh mục, văn bản thô theo nguồn. `null` khi nguồn không có. Chỉ để hiển thị."
+          },
+          "strength_text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dosage_form": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "has_active_ingredients": {
+            "type": "boolean",
+            "description": "`false` khi danh mục chưa liên kết hoạt chất chuẩn cho thuốc này: vẫn chọn được, nhưng kiểm tra tương tác sẽ là \"chưa đủ dữ liệu\"."
+          },
+          "score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Điểm khớp, làm tròn 3 chữ số thập phân. Chỉ dùng để sắp xếp và hiển thị tương đối; không so với ngưỡng ở client."
+          }
+        }
+      },
+      "OcrMatchResult": {
+        "type": "object",
+        "required": [
+          "status",
+          "items",
+          "preselected_id",
+          "suggested_query",
+          "reasons"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/OcrMatchStatus"
+          },
+          "items": {
+            "type": "array",
+            "maxItems": 10,
+            "items": {
+              "$ref": "#/components/schemas/OcrMatchCandidate"
+            },
+            "description": "Rỗng khi `status` = `no_match`; có ít nhất một phần tử ở hai trạng thái còn lại."
+          },
+          "preselected_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "`items[0].id` khi `status` = `matched`, ngược lại `null`."
+          },
+          "suggested_query": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "Chuỗi gợi ý để điền sẵn vào tìm thủ công (`GET /catalog/medications?q=`), là tên thuốc đọc được tin cậy nhất. Luôn có khi `status` khác `matched`, trừ khi văn bản không có tên nào dùng được (ví dụ chỉ có hạn dùng, số lô); khi đó `null`. Khi `matched` luôn `null`."
+          },
+          "reasons": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "$ref": "#/components/schemas/OcrMatchReason"
+            },
+            "description": "Không có thứ tự. Có thể rỗng."
           }
         }
       },
