@@ -36,7 +36,7 @@
     },
     {
       "name": "adherence",
-      "description": "Lịch sử tuân thủ dùng thuốc và dữ liệu liều của người bệnh." 
+      "description": "Lịch sử tuân thủ dùng thuốc và dữ liệu liều của người bệnh."
     }
   ],
   "paths": {
@@ -5413,7 +5413,7 @@
         ],
         "operationId": "getAdherenceHistory",
         "summary": "Lịch sử tuân thủ của chính mình hoặc bệnh nhân đã chia sẻ",
-        "description": "Đọc lịch sử liều theo ngày hoặc thuốc. Không nhận body. Nếu bỏ `patient_id`, lấy chính người gọi. Nếu chọn bệnh nhân khác, mỗi request kiểm liên kết người thân active, `sharing_enabled`, consent `family_sharing` và `health_data` của bệnh nhân từ DB; rút quyền có hiệu lực ở request kế tiếp. Chính chủ cần `health_data`. Admin không được đọc. Truy cập được phép hoặc bị từ chối đối với patient tồn tại đều được audit; patient không tồn tại trả 403 cùng body nhưng không ghi audit vì không có khóa ngoại. Lỗi quyền/audit fail-closed. Không trả dữ liệu sức khỏe khi bị từ chối. Khoảng ngày tính theo Asia/Ho_Chi_Minh, tối đa 90 ngày bao gồm hai đầu; mặc định kết thúc hôm nay và bắt đầu 29 ngày trước ngày kết thúc. Chỉ trả liều đã đến thời điểm `as_of`. Response không cache.\n\n**Trạng thái liều** (task 3.19). Gọi T là `scheduled_at`, hạn chót D = T + 120 phút, `patient_last_synced_at` là lần gần nhất điện thoại của bệnh nhân báo đã gửi hết hàng chờ (`POST /doses/sync-checkpoints`, giờ server):\n- `da_uong` / `uong_tre`: đã có xác nhận hợp lệ, `status_source = recorded`.\n- `cho_xac_nhan`: `as_of` ≤ D và chưa có bản ghi; `inferred`.\n- `chua_xac_minh`: `as_of` > D, chưa có bản ghi, và `patient_last_synced_at` là `null` hoặc trước D. Server chưa biết bệnh nhân đã uống chưa (điện thoại có thể đang giữ xác nhận offline); `inferred`; không tính vào tỷ lệ tuân thủ; người thân **không** nhận cảnh báo cho liều này cho tới khi xác minh được.\n- `bo_lo`: `recorded` khi đã có bản ghi bỏ lỡ (Worker ghi sau khi xác minh, hoặc xác nhận sau 120 phút); `inferred` khi chưa có bản ghi nhưng `patient_last_synced_at` ≥ D (đã xác minh, Worker chưa kịp ghi, hoặc lịch tắt nhắc nên Worker không ghi).\n\nBiên so tới micro giây: đúng D vẫn là `cho_xac_nhan`; `patient_last_synced_at` = D là đã xác minh. Liều `chua_xac_minh` chuyển sang trạng thái khác ở request sau khi bệnh nhân đồng bộ, không cần client làm gì.\n\n`patient_last_synced_at` là dữ liệu về bệnh nhân, chỉ trả cho người qua được kiểm quyền của endpoint này. App người thân hiển thị như bằng chứng (ví dụ \"Chưa xác minh — điện thoại đồng bộ lần cuối 07:02\") và không lưu bền (QD-29).",
+        "description": "Đọc lịch sử liều theo ngày hoặc thuốc. Không nhận body. Nếu bỏ `patient_id`, lấy chính người gọi. Nếu chọn bệnh nhân khác, mỗi request kiểm liên kết người thân active, `sharing_enabled`, consent `family_sharing` và `health_data` của bệnh nhân từ DB; rút quyền có hiệu lực ở request kế tiếp. Chính chủ cần `health_data`. Admin không được đọc. Truy cập được phép hoặc bị từ chối đối với patient tồn tại đều được audit; patient không tồn tại trả 403 cùng body nhưng không ghi audit vì không có khóa ngoại. Lỗi quyền/audit fail-closed. Không trả dữ liệu sức khỏe khi bị từ chối. Khoảng ngày tính theo Asia/Ho_Chi_Minh, tối đa 90 ngày bao gồm hai đầu; mặc định kết thúc hôm nay và bắt đầu 29 ngày trước ngày kết thúc. Chỉ trả liều đã đến thời điểm `as_of`. Response không cache.\n\n**Trạng thái liều** (task 3.19). Gọi T là `scheduled_at`, hạn chót D = T + 120 phút, `patient_last_synced_at` là lần gần nhất điện thoại của bệnh nhân báo đã gửi hết hàng chờ (`POST /doses/sync-checkpoints`, giờ server):\n- `da_uong` / `uong_tre`: đã có xác nhận hợp lệ, `status_source = recorded`.\n- `cho_xac_nhan`: `as_of` ≤ D và chưa có bản ghi; `inferred`.\n- `chua_xac_minh`: `as_of` > D, chưa có bản ghi, và `patient_last_synced_at` là `null` hoặc trước D. Server chưa biết bệnh nhân đã uống chưa (điện thoại có thể đang giữ xác nhận offline); `inferred`; không tính vào tỷ lệ tuân thủ; người thân **không** nhận cảnh báo cho liều này cho tới khi xác minh được.\n- `bo_lo`: `recorded` khi đã có bản ghi bỏ lỡ (Worker ghi sau khi xác minh, hoặc xác nhận sau 120 phút); `inferred` khi chưa có bản ghi nhưng `patient_last_synced_at` ≥ D (đã xác minh, Worker chưa kịp ghi, hoặc lịch tắt nhắc nên Worker không ghi).\n\nBiên so tới micro giây: đúng D vẫn là `cho_xac_nhan`; `patient_last_synced_at` = D là đã xác minh. Liều `chua_xac_minh` chuyển sang trạng thái khác ở request sau khi bệnh nhân đồng bộ, không cần client làm gì.\n\n`patient_last_synced_at` là dữ liệu về bệnh nhân, chỉ trả cho người qua được kiểm quyền của endpoint này. App người thân hiển thị như bằng chứng (ví dụ \"Chưa xác minh — điện thoại đồng bộ lần cuối 07:02\") và không lưu bền (QD-29).\n\nBản ghi bo_lo cũ xuất hiện sớm: nếu chưa có xác nhận hợp lệ và as_of ≤ D, vẫn trả cho_xac_nhan/inferred, taken_at=null; không sửa dòng DB. Sau D, bo_lo có sẵn được trả recorded; trường hợp chưa có dòng tiếp tục xét patient_last_synced_at như trên. Quy tắc chờ không phụ thuộc Worker đã quét hay chưa.\n\nTỷ lệ làm tròn half-up đến hai chữ số thập phân; tổng chung tính từ các số đếm chung, không lấy trung bình tỷ lệ nhóm. counted = taken + late + missed; total = counted + pending + unverified. counted=0 thì adherence_rate=null.",
         "security": [
           {
             "bearerAuth": []
@@ -6037,6 +6037,455 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/profile": {
+      "get": {
+        "tags": [
+          "profile"
+        ],
+        "operationId": "getOwnHealthProfile",
+        "summary": "Get own health profile",
+        "description": "Self only: the authenticated identity determines the owner; no patient_id or user_id selector is accepted. Requires current health_data consent and Scope.HEALTH_PROFILE authorization, checked against the database on every request. Persist minimal audit metadata for allowed and PEP-denied access, including self access, according to QD-33. Fail closed if audit cannot be durably persisted. Never include medical payloads, email values, or profile payloads in audit. Personal fields can be null before onboarding is complete. email is the current login address. Conditions are ordered by link id ASC. Do not cache health responses (Cache-Control: no-store). Do not send user_id or patient_id query selectors: their presence returns 422 profile_is_self_only. Admin status grants no health-profile access; PEP denial returns 403 (including consent_revoked).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Own profile, including an empty conditions array when none are recorded.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "Do not cache personal health data."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthProfileResponse"
+                },
+                "examples": {
+                  "complete": {
+                    "value": {
+                      "full_name": "Nguyen Van A",
+                      "date_of_birth": "1990-05-20",
+                      "gender": "nam",
+                      "email": "hoa.nguyen@example.com",
+                      "conditions": [
+                        {
+                          "id": 12,
+                          "condition_id": 3,
+                          "condition_name": "Diabetes mellitus",
+                          "subtype": null,
+                          "stage": null
+                        }
+                      ]
+                    }
+                  },
+                  "incomplete": {
+                    "value": {
+                      "full_name": null,
+                      "date_of_birth": null,
+                      "gender": null,
+                      "email": null,
+                      "conditions": []
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/ProfileUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ProfileForbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ProfileInternalError"
+          },
+          "422": {
+            "$ref": "#/components/responses/ProfileValidationError"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "profile"
+        ],
+        "operationId": "updateOwnProfile",
+        "summary": "Update own personal profile and login email",
+        "description": "Self only. Requires current health_data consent and Scope.HEALTH_PROFILE write authorization on every request. Replace full_name, date_of_birth, and gender; do not modify conditions, phone, role or consent. The optional email field, when present, immediately updates the login email of the authenticated Supabase Auth user and the matching users.email value. Omission preserves the current email; null is invalid. The profile operation does not send OTP. The existing OTP login flow subsequently sends codes to the new email, and the same user_id remains in use. Return a generic conflict if the address is unavailable; never reveal another account. Trim full_name, reject whitespace-only names. Trim and lowercase gender using the existing accepted values. Validate DOB against today's date in Asia/Ho_Chi_Minh; today is allowed. Persist minimal audit metadata durably before acknowledging the transaction; audit failure must not be reported as success. Audit must not contain email or request payload. No offline queue or idempotency key is introduced; repeated PUT rechecks consent and may create another audit event. Concurrent PUTs use the last committed update. No response body on success; client may GET /profile to refresh the current email. Do not send user_id or patient_id query selectors: their presence returns 422 profile_is_self_only. Admin status grants no health-profile access; PEP denial returns 403 (including consent_revoked).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileUpdateRequest"
+              },
+              "examples": {
+                "profileOnly": {
+                  "value": {
+                    "full_name": "Nguyen Van A",
+                    "date_of_birth": "1990-05-20",
+                    "gender": "nam"
+                  }
+                },
+                "withLoginEmail": {
+                  "value": {
+                    "full_name": "Nguyen Van A",
+                    "date_of_birth": "1990-05-20",
+                    "gender": "nam",
+                    "email": "hoa.new@example.com"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Personal profile updated; no response body."
+          },
+          "401": {
+            "$ref": "#/components/responses/ProfileUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ProfileForbidden"
+          },
+          "409": {
+            "description": "The requested email is unavailable or belongs to another account; no profile or login email is changed. The response does not reveal the other account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "email_change_unavailable"
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/ProfileValidationError"
+          },
+          "503": {
+            "description": "Supabase Auth is unavailable or could not update the login email; the request is not reported as successful.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "auth_provider_unavailable"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/ProfileInternalError"
+          }
+        }
+      }
+    },
+    "/conditions": {
+      "get": {
+        "tags": [
+          "catalog"
+        ],
+        "operationId": "listConditions",
+        "summary": "List selectable conditions",
+        "description": "Authenticated catalog lookup, not patient health data: no health_data consent or HEALTH_PROFILE authorization is required. Return no patient identifiers or patient-condition links. Ordered by condition id ASC. Offset pagination follows the existing catalog contract; it is not a snapshot if catalog data changes. No search/filter query is introduced in this task.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Condition catalog page; total counts all conditions before pagination.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConditionListResponse"
+                },
+                "examples": {
+                  "page": {
+                    "value": {
+                      "items": [
+                        {
+                          "id": 3,
+                          "name": "Diabetes mellitus"
+                        }
+                      ],
+                      "total": 1,
+                      "limit": 20,
+                      "offset": 0
+                    }
+                  },
+                  "empty": {
+                    "value": {
+                      "items": [],
+                      "total": 0,
+                      "limit": 20,
+                      "offset": 0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/ProfileUnauthorized"
+          },
+          "422": {
+            "$ref": "#/components/responses/ProfileValidationError"
+          },
+          "500": {
+            "$ref": "#/components/responses/ProfileInternalError"
+          }
+        }
+      }
+    },
+    "/profile/conditions": {
+      "post": {
+        "tags": [
+          "profile"
+        ],
+        "operationId": "createOwnCondition",
+        "summary": "Add a condition to own profile",
+        "description": "Self only. Check current health_data consent and Scope.HEALTH_PROFILE write authorization before accessing patient data. condition_id must exist in the catalog; otherwise return 422 condition_not_found. At most one link per (user_id, condition_id), including concurrent creates. A duplicate returns 409 condition_already_exists even if metadata is identical. Optional metadata defaults to null. No idempotency key or offline sync is introduced: after an uncertain result, refresh GET /profile and reconcile a duplicate rather than retrying blindly. After a hard delete, adding the same condition creates a new link with a new id. Persist minimal audit metadata durably; audit failure must roll back creation. Never log medical payloads. Do not send user_id or patient_id query selectors: their presence returns 422 profile_is_self_only. Admin status grants no health-profile access; PEP denial returns 403 (including consent_revoked).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserConditionCreateRequest"
+              },
+              "example": {
+                "condition_id": 3,
+                "subtype": null,
+                "stage": null
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Condition link created; id is user_conditions.id, not conditions.id. Do not cache the health response.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserConditionResponse"
+                },
+                "example": {
+                  "id": 12,
+                  "condition_id": 3,
+                  "condition_name": "Diabetes mellitus",
+                  "subtype": null,
+                  "stage": null
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/ProfileUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ProfileForbidden"
+          },
+          "409": {
+            "description": "The authenticated user already has this condition link, including concurrent creation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "condition_already_exists"
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/ProfileValidationError"
+          },
+          "500": {
+            "$ref": "#/components/responses/ProfileInternalError"
+          }
+        }
+      }
+    },
+    "/profile/conditions/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "Own user_conditions link id, not catalog condition id.",
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 9223372036854775807
+          }
+        }
+      ],
+      "patch": {
+        "tags": [
+          "profile"
+        ],
+        "operationId": "updateOwnCondition",
+        "summary": "Update own condition metadata",
+        "description": "Self only. Check current health_data consent and Scope.HEALTH_PROFILE write authorization before reading or updating the link. Update only subtype/stage. An omitted property is unchanged; explicit null clears it; an empty object or condition_id/user_id/unknown property returns 422. Do not change condition identity: delete the link and create another to correct the selected disease. Missing and other-user links both return 404 user_condition_not_found without revealing ownership. Repeating the same PATCH sets the same supplied values, subject to renewed consent checks; concurrent edits to the same field use the last committed update. Persist minimal audit metadata durably; audit failure rolls back the update. Do not cache the health response (Cache-Control: no-store). Do not send user_id or patient_id query selectors: their presence returns 422 profile_is_self_only. Admin status grants no health-profile access; PEP denial returns 403 (including consent_revoked).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserConditionUpdateRequest"
+              },
+              "examples": {
+                "update": {
+                  "value": {
+                    "subtype": "Type 2"
+                  }
+                },
+                "clear": {
+                  "value": {
+                    "stage": null
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated condition link.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserConditionResponse"
+                },
+                "example": {
+                  "id": 12,
+                  "condition_id": 3,
+                  "condition_name": "Diabetes mellitus",
+                  "subtype": "Type 2",
+                  "stage": null
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/ProfileUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ProfileForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/ProfileConditionNotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ProfileValidationError"
+          },
+          "500": {
+            "$ref": "#/components/responses/ProfileInternalError"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "profile"
+        ],
+        "operationId": "deleteOwnCondition",
+        "summary": "Hard delete own condition link",
+        "description": "Self only. Check current health_data consent and Scope.HEALTH_PROFILE write authorization before accessing the link. Physically delete the caller's user_conditions row, not the catalog condition, another user's links or audit events. Missing and other-user links both return 404 user_condition_not_found. A repeated DELETE after success returns 404; deleting a stale id must never delete a subsequently recreated link. Persist minimal audit metadata durably in coordination with the deletion; audit failure rolls back deletion. No request body or success response body. Do not send user_id or patient_id query selectors: their presence returns 422 profile_is_self_only. Admin status grants no health-profile access; PEP denial returns 403 (including consent_revoked).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Condition link physically deleted; no response body."
+          },
+          "401": {
+            "$ref": "#/components/responses/ProfileUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ProfileForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/ProfileConditionNotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ProfileValidationError"
+          },
+          "500": {
+            "$ref": "#/components/responses/ProfileInternalError"
           }
         }
       }
@@ -8233,7 +8682,32 @@
             "description": "100 × (taken + late) / counted, làm tròn 2 chữ số; null khi counted = 0. Liều cho_xac_nhan và chua_xac_minh không vào mẫu số."
           }
         },
-        "description": "counted = taken + late + missed; total = counted + pending + unverified."
+        "description": "counted = taken + late + missed; total = counted + pending + unverified.",
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "counted": {
+                  "const": 0
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "adherence_rate": {
+                  "type": "null"
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "adherence_rate": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        ]
       },
       "AdherenceDose": {
         "type": "object",
@@ -8295,7 +8769,71 @@
             "description": "Liều đã xác nhận: recorded. Liều cho_xac_nhan và chua_xac_minh: inferred. Liều bỏ lỡ có thể recorded hoặc inferred."
           }
         },
-        "description": "da_uong/uong_tre có taken_at và status_source=recorded; bo_lo/cho_xac_nhan/chua_xac_minh có taken_at=null; cho_xac_nhan và chua_xac_minh có status_source=inferred."
+        "description": "da_uong/uong_tre có taken_at và status_source=recorded; bo_lo/cho_xac_nhan/chua_xac_minh có taken_at=null; cho_xac_nhan và chua_xac_minh có status_source=inferred.",
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "enum": [
+                    "da_uong",
+                    "uong_tre"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "taken_at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "status_source": {
+                  "const": "recorded"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "enum": [
+                    "bo_lo",
+                    "cho_xac_nhan",
+                    "chua_xac_minh"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "taken_at": {
+                  "type": "null"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "enum": [
+                    "cho_xac_nhan",
+                    "chua_xac_minh"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "status_source": {
+                  "const": "inferred"
+                }
+              }
+            }
+          }
+        ]
       },
       "AdherenceDateGroup": {
         "type": "object",
@@ -9047,6 +9585,250 @@
             "description": "Cảnh báo pháp lý y tế bắt buộc (NFR03). Luôn có trong mọi phản hồi."
           }
         }
+      },
+      "ProfileGender": {
+        "type": "string",
+        "enum": [
+          "nam",
+          "nu",
+          "khac",
+          "male",
+          "female",
+          "other"
+        ],
+        "description": "Existing accepted gender values; no historical-data normalization is introduced. Trim and lowercase request input before validating."
+      },
+      "ProfileUpdateRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "full_name",
+          "date_of_birth",
+          "gender"
+        ],
+        "properties": {
+          "full_name": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S",
+            "description": "Trim surrounding whitespace, reject an empty result. No new maximum length is introduced. NUL characters are invalid."
+          },
+          "date_of_birth": {
+            "type": "string",
+            "format": "date",
+            "description": "ISO 8601 calendar date YYYY-MM-DD, at or before today in Asia/Ho_Chi_Minh; no age restriction is introduced."
+          },
+          "gender": {
+            "$ref": "#/components/schemas/ProfileGender"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "minLength": 3,
+            "maxLength": 254,
+            "description": "Optional login email change. Omitted preserves the current email; a valid string is trimmed/lowercased and immediately updates the authenticated account's login email. Null is invalid. Profile update does not send OTP; the existing OTP login flow uses the new email afterward."
+          }
+        }
+      },
+      "HealthProfileResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "full_name",
+          "date_of_birth",
+          "gender",
+          "email",
+          "conditions"
+        ],
+        "properties": {
+          "full_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Null if not yet supplied."
+          },
+          "date_of_birth": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gender": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Stored value, nullable before onboarding. Historical users.gender is free text; return it without inventing a new normalization migration."
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "email",
+            "maxLength": 254,
+            "description": "Current login email, null for accounts without an email identifier."
+          },
+          "conditions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserConditionResponse"
+            },
+            "description": "Own condition links, id ASC; empty array if none."
+          }
+        }
+      },
+      "ConditionResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 9223372036854775807
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "ConditionListResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConditionResponse"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "UserConditionCreateRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "condition_id"
+        ],
+        "properties": {
+          "condition_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 9223372036854775807,
+            "description": "Existing conditions.id."
+          },
+          "subtype": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null,
+            "description": "Free-text metadata stored as supplied, or null; no medical taxonomy or new length restriction is introduced. Strings must not contain NUL characters."
+          },
+          "stage": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null,
+            "description": "Free-text metadata stored as supplied, or null. Strings must not contain NUL characters."
+          }
+        }
+      },
+      "UserConditionUpdateRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "description": "At least one metadata property. Omitted keeps the current value; null clears it. condition_id cannot be changed.",
+        "properties": {
+          "subtype": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Free text stored as supplied; null clears, omitted keeps current value. Strings must not contain NUL characters."
+          },
+          "stage": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Free text stored as supplied; null clears, omitted keeps current value. Strings must not contain NUL characters."
+          }
+        }
+      },
+      "UserConditionResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "condition_id",
+          "condition_name",
+          "subtype",
+          "stage"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 9223372036854775807,
+            "description": "user_conditions.id, used for PATCH/DELETE."
+          },
+          "condition_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 9223372036854775807
+          },
+          "condition_name": {
+            "type": "string",
+            "description": "Current catalog name for condition_id."
+          },
+          "subtype": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
       }
     },
     "responses": {
@@ -9652,6 +10434,125 @@
                   "detail": "link_request_cooldown"
                 }
               }
+            }
+          }
+        }
+      },
+      "ProfileUnauthorized": {
+        "description": "Missing, invalid or expired bearer token, or erased account. No personal data is returned.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "example": {
+              "detail": "Missing bearer token"
+            }
+          }
+        }
+      },
+      "ProfileForbidden": {
+        "description": "Current health_data consent is absent/revoked or PEP denies access. No medical data is returned and no business change is committed. Consent is rechecked on every request. Persist minimal denied audit metadata even if the business transaction rolls back.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "example": {
+              "detail": "consent_revoked"
+            }
+          }
+        }
+      },
+      "ProfileConditionNotFound": {
+        "description": "Link does not exist or does not belong to the authenticated user; identical response without ownership disclosure.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "example": {
+              "detail": "user_condition_not_found"
+            }
+          }
+        }
+      },
+      "ProfileValidationError": {
+        "description": "Invalid request/path/query. Domain errors use detail as a string; HTTP input validation uses detail as an array. Codes include invalid_full_name, invalid_date_of_birth, invalid_gender, condition_not_found and empty_condition_update. date_of_birth must be an ISO date no later than today in Asia/Ho_Chi_Minh. Unknown body fields are rejected. No business mutation is committed. A user_id or patient_id query selector on /profile or /profile/conditions routes returns 422 profile_is_self_only. Text metadata and full_name cannot contain NUL. An invalid supplied login email returns invalid_email.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              ]
+            },
+            "examples": {
+              "emptyName": {
+                "value": {
+                  "detail": "invalid_full_name"
+                }
+              },
+              "futureDob": {
+                "value": {
+                  "detail": "invalid_date_of_birth"
+                }
+              },
+              "missingCondition": {
+                "value": {
+                  "detail": "condition_not_found"
+                }
+              },
+              "emptyPatch": {
+                "value": {
+                  "detail": "empty_condition_update"
+                }
+              },
+              "invalidInput": {
+                "value": {
+                  "detail": [
+                    {
+                      "loc": [
+                        "body",
+                        "condition_id"
+                      ],
+                      "msg": "Input should be greater than or equal to 1",
+                      "type": "greater_than_equal",
+                      "input": 0,
+                      "ctx": {
+                        "ge": 1
+                      }
+                    }
+                  ]
+                }
+              },
+              "selfOnly": {
+                "value": {
+                  "detail": "profile_is_self_only"
+                }
+              },
+              "invalidEmail": {
+                "value": {
+                  "detail": "invalid_email"
+                }
+              }
+            }
+          }
+        }
+      },
+      "ProfileInternalError": {
+        "description": "Internal failure. For health-data operations this includes inability to durably persist required audit: fail closed, return no medical data and do not commit a business mutation. Never expose raw exceptions or medical payloads.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "example": {
+              "detail": "Internal server error"
             }
           }
         }
