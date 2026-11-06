@@ -5956,12 +5956,14 @@
         ],
         "operationId": "checkPatientInteractions",
         "summary": "Kiểm tra tương tác thuốc của người bệnh (PB24, Task 4.02)",
-        "description": "Kiểm tra tương tác giữa thuốc đang thêm/sửa với danh sách thuốc đang dùng của người bệnh (hoặc giữa danh sách thuốc chỉ định). Quyền truy cập: Scope.INTERACTIONS (Action.READ). Trả về 3 trạng thái CD7 và disclaimer bắt buộc NFR03.",
+        "description": "Kiểm tra tương tác giữa thuốc đang thêm/sửa với danh sách thuốc đang dùng của người bệnh (hoặc giữa danh sách thuốc chỉ định). Quyền truy cập: Scope.INTERACTIONS (Action.READ). Trả về 3 trạng thái CD7 và disclaimer bắt buộc NFR03.\n\nNhật ký truy cập (sửa ở Task 4.05): mỗi request được phép ghi `allowed`, kể cả khi người bệnh tự kiểm tra; bị từ chối ghi `denied`, kể cả người bệnh chưa có consent `health_data` (403 `consent_revoked`). `patient_id` không ứng với tài khoản nào trả 403 `khong_co_quyen` và không ghi nhật ký. Không ghi được nhật ký thì request thất bại, không trả dữ liệu.",
         "security": [
           {
             "bearerAuth": []
           }
         ],
+        "x-health-scope": "canh_bao_tuong_tac",
+        "x-health-audit-self": true,
         "requestBody": {
           "required": true,
           "content": {
@@ -6486,6 +6488,202 @@
           },
           "500": {
             "$ref": "#/components/responses/ProfileInternalError"
+          }
+        }
+      }
+    },
+    "/patients/{patient_id}/food-interactions": {
+      "parameters": [
+        {
+          "name": "patient_id",
+          "in": "path",
+          "required": true,
+          "description": "Id tài khoản người bệnh (UUID). Sai định dạng trả 422 `ValidationError`.",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "interaction"
+        ],
+        "operationId": "listPatientFoodInteractions",
+        "summary": "Tra cứu thực phẩm cần tránh cho thuốc của người bệnh (PB25, Task 4.05)",
+        "description": "Trả danh sách thực phẩm, đồ uống cần tránh hay lưu ý cho thuốc của người bệnh, nhóm theo thuốc. Không truyền `user_medication_id`: mọi thuốc đang dùng (chưa xoá, chưa ngừng). Truyền `user_medication_id`: chỉ thuốc đó, kể cả thuốc đã ngừng (`is_active` = `false`).\n\nMỗi thuốc được đối chiếu theo từng hoạt chất với quy tắc thuốc–thực phẩm **đang hiệu lực** ở thời điểm request (tất định, không dùng AI, không cache): quy tắc vừa sửa hay vừa xóa có hiệu lực ngay ở request kế tiếp. Ý nghĩa ba trạng thái ở `FoodInteractionStatus`; client không bao giờ hiển thị kết quả như \"an toàn\". Mọi response 200 có `disclaimer`.\n\nNgười được phép: chính người bệnh (có consent `health_data`); người thân có liên kết `active`, người bệnh đang bật chia sẻ và có consent `health_data` và `family_sharing`. Quyền được kiểm lại ở mỗi request: rút consent, tắt chia sẻ hoặc huỷ liên kết có hiệu lực ngay ở request kế tiếp. Mỗi request được phép ghi nhật ký truy cập `allowed` (cả khi người bệnh tự xem); không ghi được nhật ký thì request thất bại, không trả dữ liệu.\n\nKhông có quyền: 403 `khong_co_quyen` (ghi nhật ký `denied`), kể cả **admin** (QD-32); hoặc `consent_revoked` khi người bệnh tự gọi mà chưa có consent `health_data` (ghi nhật ký `denied`). `patient_id` không ứng với tài khoản nào cũng trả 403 `khong_co_quyen` (không ghi nhật ký). Quyền được kiểm trước `user_medication_id`, nên người không có quyền luôn nhận 403, không bao giờ 404.\n\n**App của người thân không lưu kết quả vào CSDL hay bộ nhớ bền của máy** (QD-29).",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-health-scope": "canh_bao_tuong_tac",
+        "x-health-audit-self": true,
+        "parameters": [
+          {
+            "name": "user_medication_id",
+            "in": "query",
+            "required": false,
+            "description": "Chỉ tra cứu thuốc này trong danh sách của người bệnh `patient_id` (id ở `/medications/{id}`). Bỏ trống để tra cứu mọi thuốc đang dùng.",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Kết quả tra cứu.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu dữ liệu sức khỏe trong cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FoodInteractionReport"
+                },
+                "examples": {
+                  "three_states": {
+                    "summary": "Không lọc: ba thuốc ở ba trạng thái",
+                    "value": {
+                      "patient_id": "11111111-1111-4111-8111-111111111111",
+                      "as_of": "2026-11-06T10:15:00+07:00",
+                      "status": "co_tuong_tac",
+                      "medications": [
+                        {
+                          "user_medication_id": 42,
+                          "medication": {
+                            "id": 1007,
+                            "name": "Rodogyl",
+                            "active_ingredient": "Spiramycin, Metronidazol",
+                            "strength_text": "750.000 IU + 125 mg",
+                            "dosage_form": "Viên nén bao phim"
+                          },
+                          "is_active": true,
+                          "status": "co_tuong_tac",
+                          "ingredients": [
+                            {
+                              "id": 501,
+                              "standard_name": "Metronidazol"
+                            },
+                            {
+                              "id": 502,
+                              "standard_name": "Spiramycin"
+                            }
+                          ],
+                          "warnings": [
+                            {
+                              "rule_id": 77,
+                              "version_id": 912,
+                              "ingredient": {
+                                "id": 501,
+                                "standard_name": "Metronidazol"
+                              },
+                              "food_to_avoid": "Rượu và đồ uống có cồn",
+                              "severity_level": 4,
+                              "reason": "Gây phản ứng kiểu disulfiram: đỏ bừng mặt, buồn nôn, tim đập nhanh.",
+                              "source": "Dược thư Quốc gia Việt Nam 2022"
+                            }
+                          ]
+                        },
+                        {
+                          "user_medication_id": 43,
+                          "medication": {
+                            "id": 1010,
+                            "name": "Paracetamol 500mg",
+                            "active_ingredient": "Paracetamol",
+                            "strength_text": "500 mg",
+                            "dosage_form": "Viên nén"
+                          },
+                          "is_active": true,
+                          "status": "da_kiem_tra_khong_thay",
+                          "ingredients": [
+                            {
+                              "id": 510,
+                              "standard_name": "Paracetamol"
+                            }
+                          ],
+                          "warnings": []
+                        },
+                        {
+                          "user_medication_id": 44,
+                          "medication": {
+                            "id": 2051,
+                            "name": "Hoạt huyết dưỡng não",
+                            "active_ingredient": null,
+                            "strength_text": null,
+                            "dosage_form": "Viên bao đường"
+                          },
+                          "is_active": true,
+                          "status": "khong_du_du_lieu",
+                          "ingredients": [],
+                          "warnings": []
+                        }
+                      ],
+                      "disclaimer": "Thông tin chỉ mang tính tham khảo. Hãy hỏi bác sĩ hoặc dược sĩ trước khi thay đổi việc dùng thuốc hay ăn uống."
+                    }
+                  },
+                  "no_medications": {
+                    "summary": "Người bệnh chưa có thuốc đang dùng",
+                    "value": {
+                      "patient_id": "11111111-1111-4111-8111-111111111111",
+                      "as_of": "2026-11-06T10:15:00+07:00",
+                      "status": "khong_du_du_lieu",
+                      "medications": [],
+                      "disclaimer": "Thông tin chỉ mang tính tham khảo. Hãy hỏi bác sĩ hoặc dược sĩ trước khi thay đổi việc dùng thuốc hay ăn uống."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "Đã có quyền với `patient_id` nhưng `user_medication_id` không thuộc danh sách thuốc của người bệnh này, đã bị xoá, hoặc không tồn tại. Không lộ thông tin gì về thuốc đó.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "user_medication_not_found"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`patient_id` không phải UUID, hoặc `user_medication_id` không phải số nguyên ≥ 1.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                "example": {
+                  "detail": [
+                    {
+                      "loc": [
+                        "query",
+                        "user_medication_id"
+                      ],
+                      "msg": "Input should be greater than or equal to 1",
+                      "type": "greater_than_equal"
+                    }
+                  ]
+                }
+              }
+            }
           }
         }
       }
@@ -9827,6 +10025,141 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "FoodInteractionStatus": {
+        "type": "string",
+        "enum": [
+          "co_tuong_tac",
+          "da_kiem_tra_khong_thay",
+          "khong_du_du_lieu"
+        ],
+        "description": "Kết quả tra cứu tương tác thuốc–thực phẩm. Áp dụng cho từng thuốc và cho cả báo cáo.\n\nCủa một thuốc:\n- `co_tuong_tac`: ít nhất một hoạt chất của thuốc có quy tắc tương tác thực phẩm đang hiệu lực; `warnings` liệt kê đủ mọi quy tắc.\n- `da_kiem_tra_khong_thay`: thuốc có hoạt chất trong danh mục nhưng không hoạt chất nào có quy tắc trong **dữ liệu hiện có**. Không có nghĩa là an toàn; client không được hiển thị như \"an toàn\" hay \"ăn gì cũng được\".\n- `khong_du_du_lieu`: thuốc chưa được tách hoạt chất trong danh mục nên không đối chiếu được. Client hiển thị \"chưa xác minh được, hãy hỏi dược sĩ\".\n\nCủa cả báo cáo: `co_tuong_tac` nếu có ít nhất một thuốc `co_tuong_tac`; ngược lại `khong_du_du_lieu` nếu có ít nhất một thuốc `khong_du_du_lieu` **hoặc danh sách thuốc rỗng**; còn lại `da_kiem_tra_khong_thay`."
+      },
+      "FoodInteractionWarning": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "rule_id",
+          "version_id",
+          "ingredient",
+          "food_to_avoid",
+          "severity_level",
+          "reason",
+          "source"
+        ],
+        "description": "Một quy tắc tương tác thực phẩm đang hiệu lực của một hoạt chất trong thuốc.",
+        "properties": {
+          "rule_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Mã quy tắc, không đổi qua các lần sửa (`id` ở `/admin/drug-food-interactions/{id}`)."
+          },
+          "version_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Id phiên bản quy tắc dùng cho cảnh báo này, để truy vết đúng nội dung đã hiển thị. Quy tắc được sửa thì lần tra cứu sau trả phiên bản mới; quy tắc bị xóa thì không còn trả."
+          },
+          "ingredient": {
+            "$ref": "#/components/schemas/ActiveIngredientRef"
+          },
+          "food_to_avoid": {
+            "type": "string",
+            "description": "Thực phẩm, đồ uống cần tránh hay lưu ý, nguyên văn như trong danh mục quy tắc."
+          },
+          "severity_level": {
+            "$ref": "#/components/schemas/InteractionSeverity"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "description": "Nguồn tài liệu của quy tắc."
+          }
+        }
+      },
+      "FoodInteractionMedicationResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "user_medication_id",
+          "medication",
+          "is_active",
+          "status",
+          "ingredients",
+          "warnings"
+        ],
+        "description": "Kết quả tra cứu cho một thuốc trong danh sách của người bệnh.",
+        "properties": {
+          "user_medication_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Id thuốc trong danh sách của người bệnh (`/medications/{id}`)."
+          },
+          "medication": {
+            "$ref": "#/components/schemas/CatalogMedicationSummary",
+            "description": "Thuốc trong danh mục. Thuốc đã bị gỡ khỏi danh mục vẫn được trả và vẫn được đối chiếu theo hoạt chất."
+          },
+          "is_active": {
+            "type": "boolean",
+            "description": "`true` khi thuốc đang dùng (chưa ngừng). Chỉ có thể là `false` khi lọc theo `user_medication_id` của thuốc đã ngừng."
+          },
+          "status": {
+            "$ref": "#/components/schemas/FoodInteractionStatus"
+          },
+          "ingredients": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActiveIngredientRef"
+            },
+            "description": "Các hoạt chất đã đối chiếu, sắp theo `standard_name`. Rỗng khi và chỉ khi `status` = `khong_du_du_lieu`."
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FoodInteractionWarning"
+            },
+            "description": "Mọi quy tắc đang hiệu lực của mọi hoạt chất trong thuốc, sắp theo `severity_level` giảm dần, rồi `food_to_avoid`, rồi `version_id` tăng dần. Không gộp thực phẩm trùng tên giữa các hoạt chất. Khác rỗng khi và chỉ khi `status` = `co_tuong_tac`."
+          }
+        }
+      },
+      "FoodInteractionReport": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "patient_id",
+          "as_of",
+          "status",
+          "medications",
+          "disclaimer"
+        ],
+        "properties": {
+          "patient_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Thời điểm tra cứu, có offset `+07:00`. Kết quả tính lại ở mỗi request, không cache."
+          },
+          "status": {
+            "$ref": "#/components/schemas/FoodInteractionStatus",
+            "description": "Trạng thái tổng của báo cáo (xem quy tắc gộp ở `FoodInteractionStatus`)."
+          },
+          "medications": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FoodInteractionMedicationResult"
+            },
+            "description": "Không lọc: mọi thuốc đang dùng (chưa xoá, chưa ngừng), sắp theo `user_medication_id` tăng dần; rỗng khi không có thuốc nào. Lọc theo `user_medication_id`: đúng một phần tử."
+          },
+          "disclaimer": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Lời miễn trừ y khoa bắt buộc (BR-17), có trong mọi response 200. Client hiển thị nguyên văn, không tự thay câu khác. Giá trị hiện tại: \"Thông tin chỉ mang tính tham khảo. Hãy hỏi bác sĩ hoặc dược sĩ trước khi thay đổi việc dùng thuốc hay ăn uống.\""
           }
         }
       }
