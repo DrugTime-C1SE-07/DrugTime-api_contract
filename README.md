@@ -33,6 +33,14 @@ links unchanged. Omit `email` to preserve it; `null` is invalid. A supplied vali
 email updates the login address without sending OTP. This operation is separate
 from onboarding's existing `POST /auth/profile`.
 
+`GET /profile` also returns nullable `phone_number` for the caller. This is contact
+information, not a verified login identifier. `PUT /profile` accepts an optional
+`phone_number`; omission preserves it, while null and empty values are invalid.
+Local `0`-prefixed numbers normalize to `+84`, with spaces/hyphens removed; the
+result must be E.164. Invalid format returns `422 invalid_phone`; an unavailable
+number returns `409 phone_change_unavailable`. Contact phone changes do not
+update Supabase Auth, change the login email, or send SMS/OTP.
+
 The condition-link `{id}` is `user_conditions.id`, not the catalog condition ID.
 For PATCH, omitted fields are unchanged and explicit `null` clears the value; an
 empty body or a field other than `subtype`/`stage` is invalid. A duplicate POST
