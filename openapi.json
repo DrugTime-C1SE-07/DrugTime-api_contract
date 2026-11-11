@@ -3,7 +3,7 @@
   "info": {
     "title": "DrugTime API",
     "version": "0.1.0",
-    "description": "Hợp đồng API giữa Backend API và các client (Mobile App, Admin Web).\n\nQuy ước chung:\n- Xác thực bằng header `Authorization: Bearer <token>`, trong đó token là **app session token** do `/auth` cấp (`session.access_token`). Token do Supabase Auth cấp không được chấp nhận làm bearer (401). Phiên `mobile` sống 10 ngày, không có refresh: hết hạn thì đăng nhập lại. Phiên `admin_web` hết hạn sau 20 phút kể từ lần cấp gần nhất; gia hạn bằng `POST /auth/admin/session/refresh`.\n- Thời điểm dùng RFC 3339 / ISO 8601 có offset. Giờ uống (`HH:MM`) là giờ địa phương Asia/Ho_Chi_Minh.\n- Lỗi có body `{\"detail\": ...}`. Với 403, 404, 409, 429, 503 và lỗi quy tắc nghiệp vụ 422, `detail` là một chuỗi mã ổn định (snake_case) để client so khớp. Với lỗi sai cấu trúc request 422, `detail` là mảng lỗi theo từng field (định dạng mặc định của FastAPI). Với 401, `detail` là câu mô tả, client không so khớp nội dung.\n- Endpoint chạm dữ liệu sức khỏe kiểm quyền và consent ở mỗi request; truy cập bị từ chối trả 403 và được ghi vào nhật ký truy cập.\n- Endpoint trả danh sách bọc trong object `{\"items\": [...]}` để sau này thêm phân trang hoặc metadata mà không phá vỡ client.\n- Endpoint có phân trang dùng **con trỏ**: query `limit` (số phần tử tối đa của trang) và `cursor` (bỏ trống ở trang đầu); response có `next_cursor`, là `null` ở trang cuối. Muốn tải trang kế thì gửi lại đúng `next_cursor` nhận được. Con trỏ là chuỗi mờ: client không đọc, không tự tạo hay sửa. Con trỏ hỏng hoặc không thuộc endpoint/tham số này trả 422 `invalid_cursor`. Phần tử đã trả ở trang trước không lặp lại ở trang sau.\n- Giai đoạn 1 admin **không** đọc hay ghi dữ liệu sức khỏe của người bệnh (QD-32): mọi endpoint dữ liệu sức khỏe trả 403 `khong_co_quyen` cho admin và ghi nhật ký `denied`.\n- Ngoại lệ phân trang cho **danh sách admin** (`/admin/...`): dùng `skip` (số phần tử bỏ qua, mặc định 0) và `limit`; response có `items` và `total` (tổng số phần tử khớp bộ lọc, không tính phân trang), để bảng quản trị hiện số trang. Thứ tự sắp xếp của mỗi endpoint được ghi trong endpoint đó.\n- Endpoint `/admin/...` chỉ dành cho tài khoản admin (QD-44): thiếu hoặc sai token trả 401; tài khoản không phải admin trả 403 `admin_only`. Danh mục quy tắc tương tác không phải dữ liệu sức khỏe của người bệnh nên không ghi nhật ký truy cập.\n- Ngoại lệ cho lịch sử tuân thủ: `GET /adherence` trả kết quả nhóm trong `groups` và `summary`, không dùng `items`."
+    "description": "Hợp đồng API giữa Backend API và các client (Mobile App, Admin Web).\n\nQuy ước chung:\n- Xác thực bằng header `Authorization: Bearer <token>`, trong đó token là **app session token** do `/auth` cấp (`session.access_token`). Token do Supabase Auth cấp không được chấp nhận làm bearer (401). Phiên `mobile` sống 10 ngày, không có refresh: hết hạn thì đăng nhập lại. Phiên `admin_web` hết hạn sau 20 phút kể từ lần cấp gần nhất; gia hạn bằng `POST /auth/admin/session/refresh`.\n- Thời điểm dùng RFC 3339 / ISO 8601 có offset. Giờ uống (`HH:MM`) là giờ địa phương Asia/Ho_Chi_Minh.\n- Lỗi có body `{\"detail\": ...}`. Với 403, 404, 409, 429, 503 và lỗi quy tắc nghiệp vụ 422, `detail` là một chuỗi mã ổn định (snake_case) để client so khớp. Với lỗi sai cấu trúc request 422, `detail` là mảng lỗi theo từng field (định dạng mặc định của FastAPI). Với 401, `detail` là câu mô tả, client không so khớp nội dung.\n- Endpoint chạm dữ liệu sức khỏe kiểm quyền và consent ở mỗi request; truy cập bị từ chối trả 403 và được ghi vào nhật ký truy cập.\n- Endpoint trả danh sách bọc trong object `{\"items\": [...]}` để sau này thêm phân trang hoặc metadata mà không phá vỡ client.\n- Endpoint có phân trang dùng **con trỏ**: query `limit` (số phần tử tối đa của trang) và `cursor` (bỏ trống ở trang đầu); response có `next_cursor`, là `null` ở trang cuối. Muốn tải trang kế thì gửi lại đúng `next_cursor` nhận được. Con trỏ là chuỗi mờ: client không đọc, không tự tạo hay sửa. Con trỏ hỏng hoặc không thuộc endpoint/tham số này trả 422 `invalid_cursor`. Phần tử đã trả ở trang trước không lặp lại ở trang sau.\n- Giai đoạn 1 admin **không** đọc hay ghi dữ liệu sức khỏe của người bệnh (QD-32): mọi endpoint dữ liệu sức khỏe trả 403 `khong_co_quyen` cho admin và ghi nhật ký `denied`.\n- Ngoại lệ phân trang cho **danh sách admin** (`/admin/...`): dùng `skip` (số phần tử bỏ qua, mặc định 0) và `limit`; response có `items` và `total` (tổng số phần tử khớp bộ lọc, không tính phân trang), để bảng quản trị hiện số trang. Thứ tự sắp xếp của mỗi endpoint được ghi trong endpoint đó.\n- Endpoint `/admin/...` chỉ dành cho tài khoản admin (QD-44): thiếu hoặc sai token trả 401; tài khoản không phải admin trả 403 `admin_only`. Danh mục quy tắc tương tác không phải dữ liệu sức khỏe của người bệnh nên không ghi nhật ký truy cập.\n- Ngoại lệ cho lịch sử tuân thủ: `GET /adherence` trả kết quả nhóm trong `groups` và `summary`, không dùng `items`.\n- Khi yêu cầu xóa còn hiệu lực, từ lần kiểm quyền tiếp theo người thân không được đọc thông tin của tài khoản chờ xóa. Các API đọc dữ liệu sức khỏe trả 403 và ghi denied theo PEP. Danh sách mà người thân dùng để xem tài khoản liên kết không trả thông tin của tài khoản đang chờ xóa. Quy tắc này áp dụng cả khi liên kết và consent vẫn còn hiệu lực."
   },
   "tags": [
     {
@@ -2815,6 +2815,972 @@
                       "detail": "consent_not_withdrawable"
                     }
                   }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/data-deletion-requests/otp": {
+      "post": {
+        "tags": [
+          "consent"
+        ],
+        "operationId": "requestAccountDeletionOtp",
+        "summary": "Gửi OTP xác nhận xóa tài khoản",
+        "description": "Chỉ chính chủ đã đăng nhập bằng phiên mobile. Không nhận body, query hoặc định danh tài khoản từ client. Server gửi OTP 6 chữ số đến email đăng nhập đã xác minh của chính tài khoản. Thao tác gửi OTP không tạo yêu cầu xóa. Challenge gắn với tài khoản và mục đích xóa. Gửi lại thành công thay challenge cũ; server áp dụng giới hạn gửi và thử ở cấp tài khoản. Client dùng expires_at để hiển thị thời hạn.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Đã tạo challenge và tiếp nhận gửi OTP qua email.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletionOtpChallenge"
+                },
+                "example": {
+                  "challenge_id": "01d5b29f-135b-43d3-a742-54d70be99d4c",
+                  "expires_at": "2026-11-11T10:05:00+07:00"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu phiên ứng dụng hoặc phiên không hợp lệ. Client không so khớp nội dung detail.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "Invalid credentials"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Chỉ tài khoản cá nhân dùng phiên mobile được phép.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "khong_co_quyen"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Tài khoản không có email đăng nhập đã xác minh.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "verified_email_required"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Body sai cấu trúc hoặc có tham số không được hỗ trợ.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                "example": {
+                  "detail": [
+                    {
+                      "loc": [
+                        "query",
+                        "user_id"
+                      ],
+                      "msg": "Extra inputs are not permitted",
+                      "type": "extra_forbidden"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Vượt giới hạn gửi hoặc thử OTP. Chờ hết thời gian giới hạn rồi thử lại.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "deletion_otp_rate_limited"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dịch vụ tạm thời không khả dụng.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "service_unavailable"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/data-deletion-requests": {
+      "post": {
+        "tags": [
+          "consent"
+        ],
+        "operationId": "createAccountDeletionRequest",
+        "summary": "Tiếp nhận yêu cầu xóa tài khoản",
+        "description": "Chỉ chính chủ đã đăng nhập bằng phiên mobile. Không nhận query hoặc định danh tài khoản từ client. Cần challenge còn hạn và OTP dùng một lần gắn với chính tài khoản và mục đích xóa. OTP đăng nhập không hợp lệ cho thao tác này. Chỉ trả thành công khi kết quả đã lưu bền vững. Mỗi tài khoản có tối đa một yêu cầu mở. Một lần xác nhận hợp lệ với OTP mới khi đã có yêu cầu chờ xóa trả 200 và giữ nguyên mốc thời gian. Hai lần dùng cùng challenge không thể cùng tiêu thụ OTP; lần dùng lại trả 422. Nếu mất phản hồi, xin mã mới rồi xác nhận lại để nhận trạng thái đã lưu. Không tự động thử lại cùng OTP. Khi yêu cầu đã đến hạn và chờ xử lý, xác nhận bằng OTP mới trả 409; không gia hạn hoặc tạo yêu cầu mới.\n\nHạn xóa bằng requested_at + 30 × 24 giờ. Trong khi yêu cầu còn hiệu lực, người thân không được truy cập thông tin về tài khoản đó, liên kết và consent được giữ. Không tạo gợi ý món ăn mới. Đăng nhập thành công trước hạn hủy yêu cầu qua luồng đăng nhập; đến hạn mà yêu cầu chưa hủy, hệ thống tự động xử lý xóa. Mốc scheduled_deletion_at là thời điểm đủ điều kiện xóa, không phải xác nhận đã xóa xong.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Đã có yêu cầu đang chờ. Trả trạng thái và hạn đã lưu.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingDeletionRequest"
+                },
+                "example": {
+                  "status": "cho_xoa",
+                  "requested_at": "2026-11-11T10:00:00+07:00",
+                  "scheduled_deletion_at": "2026-12-11T10:00:00+07:00"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Đã tạo yêu cầu chờ xóa.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingDeletionRequest"
+                },
+                "example": {
+                  "status": "cho_xoa",
+                  "requested_at": "2026-11-11T10:00:00+07:00",
+                  "scheduled_deletion_at": "2026-12-11T10:00:00+07:00"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu phiên ứng dụng hoặc phiên không hợp lệ. Client không so khớp nội dung detail.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "Invalid credentials"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Chỉ tài khoản cá nhân dùng phiên mobile được phép.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "khong_co_quyen"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Yêu cầu còn hiệu lực và đã đến hạn xóa.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "deletion_request_due"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Body sai cấu trúc dùng ValidationError. OTP sai, hết hạn, đã dùng, bị thay thế hoặc challenge không hợp lệ cho tài khoản và thao tác này đều trả deletion_otp_invalid.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    }
+                  ]
+                },
+                "example": {
+                  "detail": "deletion_otp_invalid"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Vượt giới hạn gửi hoặc thử OTP. Chờ hết thời gian giới hạn rồi thử lại.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "deletion_otp_rate_limited"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dịch vụ tạm thời không khả dụng.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "service_unavailable"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDeletionRequest"
+              },
+              "example": {
+                "challenge_id": "01d5b29f-135b-43d3-a742-54d70be99d4c",
+                "otp": "123456"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/email-change/otp": {
+      "post": {
+        "tags": [
+          "identity"
+        ],
+        "operationId": "startEmailChange",
+        "summary": "Yêu cầu mã xác nhận đổi email",
+        "description": "Chỉ chính chủ với app session Mobile. Server chuẩn hóa new_email (bỏ khoảng trắng đầu/cuối, chuyển chữ thường) và gửi OTP đến email hiện tại đã xác minh lấy từ Auth, không nhận email hiện tại hay user_id từ client. new_email phải khác email hiện tại và chưa được tài khoản khác sử dụng. 201 chỉ khi đã lưu bền vững challenge và tiếp nhận gửi email. Một challenge đang hoạt động mỗi tài khoản. Gửi lại thành công thay challenge trước; giới hạn gửi và thử theo tài khoản vẫn được giữ. Email đăng nhập chưa thay đổi. Không nhận query. Chỉ hỗ trợ email ở giai đoạn này.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailChangeStart"
+              },
+              "example": {
+                "new_email": "new@example.com"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Đã tiếp nhận gửi OTP tới email hiện tại.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailChangeChallenge"
+                },
+                "example": {
+                  "challenge_id": "1ef8cbd4-7b0c-4800-ad9b-c2bcc4b0ab18",
+                  "expires_at": "2026-11-11T10:05:00+07:00"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Phiên thiếu hoặc không hợp lệ. Client không so khớp detail.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "Invalid credentials"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Chỉ tài khoản cá nhân với phiên Mobile được phép.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "khong_co_quyen"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Không thể tiếp tục do email hiện tại đã đổi, email mới không khả dụng, giao dịch đã hoàn tất hoặc trạng thái không phù hợp.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "email_change_unavailable"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Sai cấu trúc body hoặc query: ValidationError. Mã sai, đã dùng, hết hạn, không đúng tài khoản hoặc không đúng giai đoạn: email_change_otp_invalid.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    }
+                  ]
+                },
+                "example": {
+                  "detail": "email_change_otp_invalid"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Vượt giới hạn gửi hoặc thử OTP theo tài khoản.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "email_change_rate_limited"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Auth, email hoặc DB tạm thời không khả dụng.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "service_unavailable"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/email-change/verify-current": {
+      "post": {
+        "tags": [
+          "identity"
+        ],
+        "operationId": "verifyCurrentEmailChange",
+        "summary": "Xác nhận email hiện tại",
+        "description": "Xác nhận OTP của giai đoạn email hiện tại. Khi hợp lệ và email hiện tại vẫn khớp lúc phát mã, backend tiêu thụ OTP cũ, lưu bền vững trạng thái và tiếp nhận gửi OTP mới đến new_email. Trả cùng challenge_id và expires_at mới. OTP từng giai đoạn là một lần, gắn tài khoản, mục đích và email. Không nhận query. Nếu gửi email mới thất bại trả 503 và OTP cũ còn hiệu lực nếu chưa hết hạn. Nếu phản hồi bị mất sau khi commit, xác minh lại mã cũ trả 422: client bắt đầu lại từ đầu; không đổi email.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailChangeVerify"
+              },
+              "example": {
+                "challenge_id": "1ef8cbd4-7b0c-4800-ad9b-c2bcc4b0ab18",
+                "otp": "123456"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đã xác minh email hiện tại và tiếp nhận gửi OTP tới email mới.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailChangeChallenge"
+                },
+                "example": {
+                  "challenge_id": "1ef8cbd4-7b0c-4800-ad9b-c2bcc4b0ab18",
+                  "expires_at": "2026-11-11T10:08:00+07:00"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Phiên thiếu hoặc không hợp lệ. Client không so khớp detail.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "Invalid credentials"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Chỉ tài khoản cá nhân với phiên Mobile được phép.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "khong_co_quyen"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Không thể tiếp tục do email hiện tại đã đổi, email mới không khả dụng, giao dịch đã hoàn tất hoặc trạng thái không phù hợp.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "email_change_unavailable"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Sai cấu trúc body hoặc query: ValidationError. Mã sai, đã dùng, hết hạn, không đúng tài khoản hoặc không đúng giai đoạn: email_change_otp_invalid.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    }
+                  ]
+                },
+                "example": {
+                  "detail": "email_change_otp_invalid"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Vượt giới hạn gửi hoặc thử OTP theo tài khoản.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "email_change_rate_limited"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Auth, email hoặc DB tạm thời không khả dụng.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "service_unavailable"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/email-change/confirm": {
+      "post": {
+        "tags": [
+          "identity"
+        ],
+        "operationId": "confirmEmailChange",
+        "summary": "Xác nhận email mới",
+        "description": "Xác nhận OTP gửi đến email mới. Trước khi đổi, server kiểm lại email hiện tại khớp email đã xác minh ở giai đoạn trước và email mới còn khả dụng. Chỉ sau khi Auth và hồ sơ đã được cập nhật nhất quán, vô hiệu challenge OTP xóa cũ và trả 204. Xác nhận lỗi không được trả thành công. Nếu Auth thành công nhưng DB lỗi, thực hiện bù an toàn hoặc đưa vào trạng thái đối soát; 503, không thông báo hoàn tất và không cho dùng địa chỉ chưa xác minh để yêu cầu xóa. Mã chỉ dùng một lần. Khi mất phản hồi, gọi GET /profile để đối chiếu; mã đã tiêu thụ trả 422, không lặp mù. Không nhận query.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailChangeVerify"
+              },
+              "example": {
+                "challenge_id": "1ef8cbd4-7b0c-4800-ad9b-c2bcc4b0ab18",
+                "otp": "654321"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Email đăng nhập đã đổi. Không có body.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Phiên thiếu hoặc không hợp lệ. Client không so khớp detail.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "Invalid credentials"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Chỉ tài khoản cá nhân với phiên Mobile được phép.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "khong_co_quyen"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Không thể tiếp tục do email hiện tại đã đổi, email mới không khả dụng, giao dịch đã hoàn tất hoặc trạng thái không phù hợp.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "email_change_unavailable"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Sai cấu trúc body hoặc query: ValidationError. Mã sai, đã dùng, hết hạn, không đúng tài khoản hoặc không đúng giai đoạn: email_change_otp_invalid.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    }
+                  ]
+                },
+                "example": {
+                  "detail": "email_change_otp_invalid"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Vượt giới hạn gửi hoặc thử OTP theo tài khoản.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "email_change_rate_limited"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Auth, email hoặc DB tạm thời không khả dụng.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "service_unavailable"
                 }
               }
             }
@@ -6126,7 +7092,7 @@
         ],
         "operationId": "updateOwnProfile",
         "summary": "Update own personal profile, contact phone and optional login email",
-        "description": "Self only. Requires current health_data consent and Scope.HEALTH_PROFILE write authorization on every request. Replace full_name, date_of_birth, and gender; do not modify conditions, role or consent. The optional email field, when present, immediately updates the login email of the authenticated Supabase Auth user and the matching users.email value. Omission preserves the current email; null is invalid. The profile operation does not send OTP. The existing OTP login flow subsequently sends codes to the new email, and the same user_id remains in use. Return a generic conflict if the address is unavailable; never reveal another account. Trim full_name, reject whitespace-only names. Trim and lowercase gender using the existing accepted values. Validate DOB against today's date in Asia/Ho_Chi_Minh; today is allowed. Persist minimal audit metadata durably before acknowledging the transaction; audit failure must not be reported as success. Audit must not contain email or request payload. No offline queue or idempotency key is introduced; repeated PUT rechecks consent and may create another audit event. Concurrent PUTs use the last committed update. No response body on success; client may GET /profile to refresh the current email. Do not send user_id or patient_id query selectors: their presence returns 422 profile_is_self_only. Admin status grants no health-profile access; PEP denial returns 403 (including consent_revoked).\n\nContact/identification phone only, not a verified login identifier. Does not change Supabase Auth or send SMS/OTP. Local numbers starting with 0 are normalized to +84; E.164 is accepted. Omit to preserve the current phone; null and empty values are invalid. Invalid phone returns 422 invalid_phone. The existing unique phone constraint is retained; an unavailable phone returns 409 phone_change_unavailable without identifying another account. Audit must not contain phone numbers. Phone normalization trims surrounding whitespace, removes ASCII spaces and hyphens, and replaces one leading 0 with +84. The resulting value must match ^\\+[1-9][0-9]{7,14}$ (8 to 15 ASCII digits after +). Whitespace-only and NUL-containing values are invalid. When email is omitted, phone-only changes leave both the login email and Auth identity unchanged. The contact phone is stored only in public.users.phone_number, not auth.users.phone. On a concurrent collision the unique constraint permits at most one account to save the number; the conflicting request must roll back all profile changes. Retrying the same phone preserves the final value but rechecks authorization and writes audit metadata on every request.",
+        "description": "Self only. Requires current health_data consent and Scope.HEALTH_PROFILE write authorization on every request. Replace full_name, date_of_birth, and gender; do not modify conditions, role or consent. The optional email field, when present, immediately updates the login email of the authenticated Supabase Auth user and the matching users.email value. Omission preserves the current email; null is invalid. The profile operation does not send OTP. The existing OTP login flow subsequently sends codes to the new email, and the same user_id remains in use. Return a generic conflict if the address is unavailable; never reveal another account. Trim full_name, reject whitespace-only names. Trim and lowercase gender using the existing accepted values. Validate DOB against today's date in Asia/Ho_Chi_Minh; today is allowed. Persist minimal audit metadata durably before acknowledging the transaction; audit failure must not be reported as success. Audit must not contain email or request payload. No offline queue or idempotency key is introduced; repeated PUT rechecks consent and may create another audit event. Concurrent PUTs use the last committed update. No response body on success; client may GET /profile to refresh the current email. Do not send user_id or patient_id query selectors: their presence returns 422 profile_is_self_only. Admin status grants no health-profile access; PEP denial returns 403 (including consent_revoked).\n\nContact/identification phone only, not a verified login identifier. Does not change Supabase Auth or send SMS/OTP. Local numbers starting with 0 are normalized to +84; E.164 is accepted. Omit to preserve the current phone; null and empty values are invalid. Invalid phone returns 422 invalid_phone. The existing unique phone constraint is retained; an unavailable phone returns 409 phone_change_unavailable without identifying another account. Audit must not contain phone numbers. Phone normalization trims surrounding whitespace, removes ASCII spaces and hyphens, and replaces one leading 0 with +84. The resulting value must match ^\\+[1-9][0-9]{7,14}$ (8 to 15 ASCII digits after +). Whitespace-only and NUL-containing values are invalid. When email is omitted, phone-only changes leave both the login email and Auth identity unchanged. The contact phone is stored only in public.users.phone_number, not auth.users.phone. On a concurrent collision the unique constraint permits at most one account to save the number; the conflicting request must roll back all profile changes. Retrying the same phone preserves the final value but rechecks authorization and writes audit metadata on every request.\n\nThay đổi email trực tiếp bị từ chối: email khác email hiện tại trả 409 email_change_verification_required, không ghi bất kỳ trường nào. Dùng /me/email-change/* để đổi email sau khi xác minh hai hộp thư.",
         "security": [
           {
             "bearerAuth": []
@@ -6178,7 +7144,7 @@
             "$ref": "#/components/responses/ProfileForbidden"
           },
           "409": {
-            "description": "The requested email or contact phone is unavailable. No profile change is committed; never reveal the account that owns the identifier. Phone-only changes do not modify Auth.",
+            "description": "The requested email or contact phone is unavailable. No profile change is committed; never reveal the account that owns the identifier. Phone-only changes do not modify Auth.\n- email_change_verification_required: email khác email hiện tại; cần xác thực qua luồng đổi email.",
             "content": {
               "application/json": {
                 "schema": {
@@ -6193,6 +7159,11 @@
                   "phoneUnavailable": {
                     "value": {
                       "detail": "phone_change_unavailable"
+                    }
+                  },
+                  "email_change_verification_required": {
+                    "value": {
+                      "detail": "email_change_verification_required"
                     }
                   }
                 }
@@ -9912,7 +10883,7 @@
             "format": "email",
             "minLength": 3,
             "maxLength": 254,
-            "description": "Optional login email change. Omitted preserves the current email; a valid string is trimmed/lowercased and immediately updates the authenticated account's login email. Null is invalid. Profile update does not send OTP; the existing OTP login flow uses the new email afterward."
+            "description": "Omit để giữ email đăng nhập. Nếu email khác email hiện tại, server trả 409 email_change_verification_required và không cập nhật bất kỳ trường hồ sơ nào. Khi email không đổi, PUT /profile tiếp tục cập nhật các trường khác. Dùng luồng /me/email-change/* để đổi email sau khi xác minh email cũ và email mới."
           },
           "phone_number": {
             "type": "string",
@@ -10262,6 +11233,123 @@
             "type": "string",
             "minLength": 1,
             "description": "Lời miễn trừ y khoa bắt buộc (BR-17), có trong mọi response 200. Client hiển thị nguyên văn, không tự thay câu khác. Giá trị hiện tại: \"Thông tin chỉ mang tính tham khảo. Hãy hỏi bác sĩ hoặc dược sĩ trước khi thay đổi việc dùng thuốc hay ăn uống.\""
+          }
+        }
+      },
+      "DeletionOtpChallenge": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "challenge_id",
+          "expires_at"
+        ],
+        "properties": {
+          "challenge_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Định danh xác nhận OTP, do server cấp."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "CreateDeletionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "challenge_id",
+          "otp"
+        ],
+        "properties": {
+          "challenge_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Định danh xác nhận OTP, do server cấp."
+          },
+          "otp": {
+            "type": "string",
+            "pattern": "^[0-9]{6}$",
+            "minLength": 6,
+            "maxLength": 6,
+            "writeOnly": true
+          }
+        }
+      },
+      "PendingDeletionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "status",
+          "requested_at",
+          "scheduled_deletion_at"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "cho_xoa"
+          },
+          "requested_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "scheduled_deletion_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "EmailChangeStart": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "new_email"
+        ],
+        "properties": {
+          "new_email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 254
+          }
+        }
+      },
+      "EmailChangeChallenge": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "challenge_id",
+          "expires_at"
+        ],
+        "properties": {
+          "challenge_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "EmailChangeVerify": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "challenge_id",
+          "otp"
+        ],
+        "properties": {
+          "challenge_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "otp": {
+            "type": "string",
+            "minLength": 6,
+            "maxLength": 6,
+            "pattern": "^[0-9]{6}$",
+            "writeOnly": true
           }
         }
       }
