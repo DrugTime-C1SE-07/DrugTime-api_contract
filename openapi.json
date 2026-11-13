@@ -2822,6 +2822,114 @@
         }
       }
     },
+    "/admin/deletion-requests": {
+      "get": {
+        "tags": [
+          "consent"
+        ],
+        "operationId": "listPendingDataDeletionRequests",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Admin: danh sách yêu cầu xóa dữ liệu chờ duyệt",
+        "description": "Chỉ dành cho tài khoản có vai trò Admin hiện hành. Xác thực phiên app và kiểm vai trò hiện hành trước khi đọc hoặc đếm yêu cầu, ở mỗi lượt gọi. Thiếu hoặc sai phiên trả 401; phiên hợp lệ nhưng sai vai trò trả 403 `admin_only`.\n\nChỉ lấy trạng thái `cho_duyet`. `da_duyet`, `tu_choi`, `hoan_tat` và việc rút đồng ý theo mục đích không thuộc hàng chờ. Sau khi yêu cầu xóa đã ghi nhận và còn chờ duyệt, yêu cầu có thể được tìm thấy qua các trang trong vòng 60 giây (QA.01). Một lần đọc mới sau khi đổi trạng thái đã ghi nhận phản ánh trạng thái mới.\n\nSắp theo `requested_at` tăng dần rồi `id` tăng dần. `total` đếm toàn bộ yêu cầu `cho_duyet` trước phân trang, cùng trạng thái dữ liệu với `items`. Không có yêu cầu trả `items: []`, `total: 0`; trang vượt cuối trả `items: []` cùng `total` hiện hành. Mỗi trang đọc dữ liệu hiện hành, nên khi hàng chờ thay đổi giữa các lượt tải trang, vị trí có thể dịch chuyển.\n\nChỉ nhận `skip` và `limit`, mỗi tham số tối đa một lần. Query lạ, lặp, sai kiểu hoặc ngoài khoảng trả 422. GET không có body. Chỉ trả metadata của yêu cầu. Thao tác đọc không đổi trạng thái và không kích hoạt xóa. Không đọc hoặc đếm được trả 503 `service_unavailable`, không trả thành công một phần.",
+        "parameters": [
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "description": "Số yêu cầu bỏ qua.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Số yêu cầu tối đa trong trang.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Một trang hàng chờ.",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingDataDeletionRequestPage"
+                },
+                "examples": {
+                  "page": {
+                    "value": {
+                      "items": [
+                        {
+                          "id": 125,
+                          "user_id": "6f1c2b8e-3d4a-4c1e-9b0a-2f7e5d9c1a33",
+                          "requested_at": "2026-11-09T10:15:00+07:00",
+                          "status": "cho_duyet"
+                        }
+                      ],
+                      "total": 1
+                    }
+                  },
+                  "empty": {
+                    "value": {
+                      "items": [],
+                      "total": 0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/AdminForbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/AdminQueryUnprocessable"
+          },
+          "503": {
+            "description": "Không thể đọc hàng chờ. `detail` = `service_unavailable`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "unavailable": {
+                    "value": {
+                      "detail": "service_unavailable"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/admin/drug-interactions": {
       "post": {
         "tags": [
@@ -6699,6 +6807,58 @@
       }
     },
     "schemas": {
+      "PendingDataDeletionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "user_id",
+          "requested_at",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Mã tài khoản gửi yêu cầu."
+          },
+          "requested_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Thời điểm ghi nhận yêu cầu, RFC 3339 có offset."
+          },
+          "status": {
+            "type": "string",
+            "const": "cho_duyet"
+          }
+        }
+      },
+      "PendingDataDeletionRequestPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "total"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/PendingDataDeletionRequest"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
       "DosingMode": {
         "type": "string",
         "enum": [
