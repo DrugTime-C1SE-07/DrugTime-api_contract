@@ -7926,7 +7926,7 @@
         ],
         "operationId": "createMealSuggestions",
         "summary": "Gợi ý bữa ăn bằng AI cho người bệnh (PB37, Task 4.26)",
-        "description": "Tạo gợi ý cho một bữa: 1 món chính và tối đa 5 món thay thế, mỗi món có lợi ích và nguyên liệu, kèm tab \"Nên tránh\" từ kiểm tra thuốc–thực phẩm tất định và lời miễn trừ.\n\n**Nguồn dữ liệu.** Thuốc đang dùng và bệnh nền: backend tự đọc từ hồ sơ. Dị ứng, hạn chế, sở thích: client gửi trong body ở mỗi request, backend không lưu. Backend gửi cho nhà cung cấp AI (Anthropic) chỉ tên hoạt chất, tên bệnh nền, thực phẩm cần tránh, dị ứng, hạn chế, sở thích và bữa ăn; không gửi định danh người dùng.\n\n**Kiểm tra trước khi trả.** Output của AI được validate tất định: món chứa dị ứng hoặc thực phẩm cần tránh bị loại; lợi ích trỏ tới bệnh nền, dị ứng, hạn chế không có của người dùng hoặc nhắc tên thuốc bị loại; không còn món nào thì trả 502 `llm_invalid_output`. AI không bao giờ quyết định có hay không có tương tác: `food_check` do engine tất định tính.\n\n**Quyền.** Chỉ chính người bệnh, có consent `ai_meal`, và không có yêu cầu xóa tài khoản đang chờ. Người thân (kể cả có liên kết và chia sẻ) và admin luôn nhận 403. Quyền kiểm lại ở mỗi request: rút consent có hiệu lực ngay ở request kế tiếp. Mỗi request được phép ghi nhật ký truy cập `allowed`; không ghi được nhật ký thì request thất bại, không trả gợi ý. Quyền và body được kiểm **trước** khi gọi AI.\n\n**Thời gian và gửi lại.** Backend trả trong khoảng 10 giây (AI quá 8 giây → 503 `llm_unavailable`); client đặt timeout ≥ 15 giây. Endpoint không idempotent: mỗi request thành công gọi AI một lần và lưu một bản ghi mới (nút đổi món hay \"thử lại\" đều là request mới). Client không tự động retry; sau 502/503 chỉ gửi lại khi người dùng chủ động. Không có khóa idempotency.\n\n**App của người dùng không cần lưu gợi ý vào bộ nhớ bền**; mọi response có `Cache-Control: no-store`.",
+        "description": "Tạo gợi ý cho một bữa: 1 món chính và tối đa 5 món thay thế, mỗi món có loại món, ảnh minh họa, lợi ích và nguyên liệu, kèm tab \"Nên tránh\" từ kiểm tra thuốc–thực phẩm tất định và lời miễn trừ.\n\n**Nguồn dữ liệu.** Thuốc đang dùng và bệnh nền: backend tự đọc từ hồ sơ. Dị ứng, hạn chế, sở thích: client gửi trong body ở mỗi request, backend không lưu. Backend gửi cho nhà cung cấp AI (Anthropic) chỉ tên hoạt chất, tên bệnh nền, thực phẩm cần tránh, dị ứng, hạn chế, sở thích, bữa ăn và (khi gợi ý lại) tên các món cũ cần tránh lặp; không gửi định danh người dùng.\n\n**Kiểm tra trước khi trả.** Output của AI được validate tất định: món chứa dị ứng hoặc thực phẩm cần tránh bị loại; lợi ích trỏ tới bệnh nền, dị ứng, hạn chế không có của người dùng hoặc nhắc tên thuốc bị loại; `dish_type` ngoài enum được thay bằng `khac`; không còn món mới nào thì trả 502 `llm_invalid_output`. AI không bao giờ quyết định có hay không có tương tác: `food_check` do engine tất định tính. kcal và định lượng là cho một người, một bữa.\n\n**Gợi ý lại (\"Gợi ý khác\").** Gửi `previous_suggestion_id`. Backend giữ tối đa 3 món của gợi ý trước (bỏ món chính cũ, giữ thứ tự gốc), kiểm lại từng món với dị ứng và `food_check` hiện tại, rồi chỉ yêu cầu AI sinh 3 món mới. Response: món mới trước (`is_new = true`), món giữ lại sau (`is_new = false`, giữ nguyên ảnh), tổng 1–6 món, tên không trùng. AI lỗi thì trả lỗi như bình thường, không bao giờ trả riêng món cũ. Mỗi lần gợi ý lại thành công lưu một bản ghi mới có tham chiếu tới gợi ý trước.\n\n**Giới hạn gợi ý lại.** Mỗi tài khoản tối đa 2 lần gợi ý lại thành công mỗi ngày (giờ `Asia/Ho_Chi_Minh`, gộp mọi bữa). Lần gợi ý lại lỗi (422, 502, 503) không bị tính. Hết lượt → 429 `refresh_limit_reached`. Hai request gợi ý lại gửi đồng thời không vượt được giới hạn: request vượt nhận 429. Response 200 luôn có `refreshes_remaining`.\n\n**Ảnh món.** Response không chờ ảnh. Món chưa có ảnh trả `image.status = pending`; Worker tìm ảnh ở kho ảnh (Pexels) chỉ bằng một cụm từ mô tả món, không kèm dữ liệu người dùng. Client hỏi lại trạng thái bằng `GET /meal-images?ids=...` và tải ảnh bằng `GET /meal-images/{image_id}`. Ảnh dùng chung theo món giữa mọi người dùng.\n\n**Quyền.** Chỉ chính người bệnh, có consent `ai_meal`, và không có yêu cầu xóa tài khoản đang chờ. Người thân (kể cả có liên kết và chia sẻ) và admin luôn nhận 403. Quyền kiểm lại ở mỗi request: rút consent có hiệu lực ngay ở request kế tiếp. Mỗi request được phép ghi nhật ký truy cập `allowed`; không ghi được nhật ký thì request thất bại, không trả gợi ý.\n\n**Thứ tự kiểm.** token (401) → body (422 `ValidationError`) → quyền (403) → `previous_suggestion_id` (422 `previous_suggestion_not_found`) → giới hạn gợi ý lại (429) → gọi AI. Request bị 401, 403, 422 hay 429 không bao giờ tốn một lần gọi AI.\n\n**Thời gian và gửi lại.** Backend trả trong khoảng 10 giây (AI quá 8 giây → 503 `llm_unavailable`); client đặt timeout ≥ 15 giây. Endpoint không idempotent: mỗi request thành công gọi AI một lần và lưu một bản ghi mới. \"Đổi món\" xoay vòng trên client, không gọi API. Client không tự động retry; sau 502/503 chỉ gửi lại khi người dùng chủ động. Không có khóa idempotency.\n\n**App của người dùng không cần lưu gợi ý vào bộ nhớ bền**; mọi response có `Cache-Control: no-store`.",
         "security": [
           {
             "bearerAuth": []
@@ -7946,6 +7946,26 @@
                   "summary": "Bữa trưa, dị ứng tôm, không hạn chế",
                   "value": {
                     "meal_type": "trua",
+                    "allergies": {
+                      "none": false,
+                      "items": [
+                        "Tôm"
+                      ]
+                    },
+                    "dietary_restrictions": {
+                      "none": true,
+                      "items": []
+                    },
+                    "preferences": [
+                      "Ít cay"
+                    ]
+                  }
+                },
+                "refresh_lunch": {
+                  "summary": "Gợi ý khác cho bữa trưa, từ gợi ý 3051",
+                  "value": {
+                    "meal_type": "trua",
+                    "previous_suggestion_id": 3051,
                     "allergies": {
                       "none": false,
                       "items": [
@@ -7984,19 +8004,32 @@
                 },
                 "examples": {
                   "lunch": {
-                    "summary": "Hai món, có thực phẩm cần tránh",
+                    "summary": "Gợi ý đầu: hai món, một ảnh đã sẵn sàng, một ảnh đang tìm",
                     "value": {
                       "suggestion_id": 3051,
                       "meal_type": "trua",
                       "suggestions": [
                         {
                           "name": "Cơm gạo lứt & ức gà áp chảo",
+                          "dish_type": "com",
+                          "is_new": true,
                           "tags": [
                             "Ít muối",
                             "Nhiều rau"
                           ],
                           "kcal_estimate": 480,
                           "cook_minutes": 20,
+                          "image": {
+                            "image_id": 42,
+                            "status": "ready",
+                            "url": "/meal-images/42",
+                            "attribution": {
+                              "provider": "pexels",
+                              "photographer_name": "Nguyễn Văn A",
+                              "photographer_url": "https://www.pexels.com/@example-a",
+                              "source_url": "https://www.pexels.com/photo/example-111/"
+                            }
+                          },
                           "benefits": [
                             {
                               "text": "Ít muối, tốt cho huyết áp",
@@ -8049,11 +8082,19 @@
                         },
                         {
                           "name": "Bún cá rô đồng nấu cà chua",
+                          "dish_type": "mon_nuoc",
+                          "is_new": true,
                           "tags": [
                             "Món nước"
                           ],
                           "kcal_estimate": 420,
                           "cook_minutes": 35,
+                          "image": {
+                            "image_id": 57,
+                            "status": "pending",
+                            "url": null,
+                            "attribution": null
+                          },
                           "benefits": [
                             {
                               "text": "Đạm từ cá, ít mỡ",
@@ -8103,7 +8144,127 @@
                         ]
                       },
                       "disclaimer": "Gợi ý do AI tạo, chỉ mang tính tham khảo, không thay thế tư vấn của bác sĩ hay chuyên gia dinh dưỡng. Hãy hỏi bác sĩ hoặc dược sĩ trước khi thay đổi chế độ ăn.",
+                      "refreshes_remaining": 2,
                       "created_at": "2026-11-16T11:30:05+07:00"
+                    }
+                  },
+                  "refresh": {
+                    "summary": "Gợi ý lại: một món mới (không có ảnh), một món giữ lại; món chính cũ bị bỏ",
+                    "value": {
+                      "suggestion_id": 3052,
+                      "meal_type": "trua",
+                      "suggestions": [
+                        {
+                          "name": "Cá basa hấp gừng",
+                          "dish_type": "mon_hap_luoc",
+                          "is_new": true,
+                          "tags": [
+                            "Ít dầu"
+                          ],
+                          "kcal_estimate": 350,
+                          "cook_minutes": 25,
+                          "image": null,
+                          "benefits": [
+                            {
+                              "text": "Hấp, ít muối, hợp huyết áp",
+                              "related_to": {
+                                "type": "condition",
+                                "label": "Tăng huyết áp"
+                              }
+                            }
+                          ],
+                          "ingredients": [
+                            {
+                              "name": "Cá basa",
+                              "amount": "150 g",
+                              "group": "chinh",
+                              "use_sparingly": false
+                            },
+                            {
+                              "name": "Gừng",
+                              "amount": "1 nhánh nhỏ",
+                              "group": "gia_vi",
+                              "use_sparingly": false
+                            },
+                            {
+                              "name": "Nước tương",
+                              "amount": "1 thìa cà phê",
+                              "group": "gia_vi",
+                              "use_sparingly": true
+                            }
+                          ]
+                        },
+                        {
+                          "name": "Bún cá rô đồng nấu cà chua",
+                          "dish_type": "mon_nuoc",
+                          "is_new": false,
+                          "tags": [
+                            "Món nước"
+                          ],
+                          "kcal_estimate": 420,
+                          "cook_minutes": 35,
+                          "image": {
+                            "image_id": 57,
+                            "status": "ready",
+                            "url": "/meal-images/57",
+                            "attribution": {
+                              "provider": "pexels",
+                              "photographer_name": "Trần Thị B",
+                              "photographer_url": "https://www.pexels.com/@example-b",
+                              "source_url": "https://www.pexels.com/photo/example-222/"
+                            }
+                          },
+                          "benefits": [
+                            {
+                              "text": "Đạm từ cá, ít mỡ",
+                              "related_to": {
+                                "type": "general",
+                                "label": null
+                              }
+                            }
+                          ],
+                          "ingredients": [
+                            {
+                              "name": "Bún tươi",
+                              "amount": "150 g",
+                              "group": "chinh",
+                              "use_sparingly": false
+                            },
+                            {
+                              "name": "Cá rô đồng",
+                              "amount": "100 g",
+                              "group": "chinh",
+                              "use_sparingly": false
+                            },
+                            {
+                              "name": "Nước mắm",
+                              "amount": "1 thìa cà phê",
+                              "group": "gia_vi",
+                              "use_sparingly": true
+                            }
+                          ]
+                        }
+                      ],
+                      "food_check": {
+                        "status": "co_tuong_tac",
+                        "warnings": [
+                          {
+                            "rule_id": 81,
+                            "version_id": 930,
+                            "ingredient": {
+                              "id": 620,
+                              "standard_name": "Losartan"
+                            },
+                            "food_to_avoid": "Thực phẩm giàu kali (chuối, cam) và muối thay thế chứa kali",
+                            "severity_level": 2,
+                            "reason": "Có thể làm tăng kali máu.",
+                            "source": "Dược thư Quốc gia Việt Nam 2022"
+                          }
+                        ]
+                      },
+                      "disclaimer": "Gợi ý do AI tạo, chỉ mang tính tham khảo, không thay thế tư vấn của bác sĩ hay chuyên gia dinh dưỡng. Hãy hỏi bác sĩ hoặc dược sĩ trước khi thay đổi chế độ ăn.",
+                      "refreshes_remaining": 1,
+                      "created_at": "2026-11-16T11:32:40+07:00"
                     }
                   }
                 }
@@ -8117,11 +8278,18 @@
             "$ref": "#/components/responses/MealSuggestionForbidden"
           },
           "422": {
-            "description": "Body hoặc `patient_id` không hợp lệ (thiếu `allergies`/`dietary_restrictions`, `none` mâu thuẫn với `items`, `meal_type` ngoài enum, chuỗi quá dài, field lạ). AI không được gọi, không có gì được lưu.",
+            "description": "Body hoặc `patient_id` không hợp lệ (thiếu `allergies`/`dietary_restrictions`, `none` mâu thuẫn với `items`, `meal_type` ngoài enum, chuỗi quá dài, field lạ): `detail` là mảng `ValidationError`. Hoặc lỗi nghiệp vụ, `detail` là chuỗi:\n- `previous_suggestion_not_found`: `previous_suggestion_id` không tồn tại, thuộc người bệnh khác, hoặc khác `meal_type`. Ba trường hợp trả giống hệt nhau. Client bỏ tham chiếu và gợi ý lại từ đầu (request không có `previous_suggestion_id`).\n\nAI không được gọi, không có gì được lưu, không bị tính lượt.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ValidationError"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    }
+                  ]
                 },
                 "examples": {
                   "allergies_inconsistent": {
@@ -8138,10 +8306,18 @@
                         }
                       ]
                     }
+                  },
+                  "previous_suggestion_not_found": {
+                    "value": {
+                      "detail": "previous_suggestion_not_found"
+                    }
                   }
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/MealRefreshLimited"
           },
           "502": {
             "description": "AI trả nội dung không dùng được: sai cấu trúc, từ chối trả lời, bị cắt ngang, hoặc mọi món đều bị loại sau kiểm tra. Không trả gợi ý một phần, không lưu gì. Người dùng có thể thử lại.",
@@ -8196,6 +8372,270 @@
                       "detail": "llm_unavailable"
                     }
                   },
+                  "service_unavailable": {
+                    "value": {
+                      "detail": "service_unavailable"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/meal-images": {
+      "get": {
+        "tags": [
+          "ai_meal"
+        ],
+        "operationId": "listMealImageStatuses",
+        "summary": "Đọc trạng thái ảnh minh họa món ăn (task 5.11)",
+        "description": "Client hỏi lại các ảnh đang `pending` sau khi nhận gợi ý bữa ăn. Gợi ý: hỏi mỗi 3 giây, tối đa 30 giây kể từ khi nhận gợi ý, chỉ khi màn đang hiển thị; dừng khi không còn ảnh `pending`. Hết 30 giây vẫn `pending` thì client hiện ảnh mặc định. Backend bảo đảm một ảnh không ở `pending` quá 2 phút.\n\n**Không phải dữ liệu sức khỏe.** Ảnh là tài nguyên dùng chung theo món, không gắn với người dùng; response không cho biết ai đã được gợi ý món nào. Vì vậy endpoint chỉ cần phiên đăng nhập hợp lệ (mọi tài khoản), không qua consent, không ghi nhật ký truy cập dữ liệu sức khỏe.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ids",
+            "in": "query",
+            "required": true,
+            "style": "form",
+            "explode": true,
+            "description": "Id ảnh cần hỏi, lặp tham số: `?ids=42&ids=57`. 1–20 id, không trùng.",
+            "schema": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 20,
+              "uniqueItems": true,
+              "items": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 1
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Trạng thái hiện tại của các ảnh còn tồn tại.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MealImageStatusList"
+                },
+                "examples": {
+                  "mixed": {
+                    "value": {
+                      "items": [
+                        {
+                          "image_id": 42,
+                          "status": "ready",
+                          "url": "/meal-images/42",
+                          "attribution": {
+                            "provider": "pexels",
+                            "photographer_name": "Nguyễn Văn A",
+                            "photographer_url": "https://www.pexels.com/@example-a",
+                            "source_url": "https://www.pexels.com/photo/example-111/"
+                          }
+                        },
+                        {
+                          "image_id": 57,
+                          "status": "failed",
+                          "url": null,
+                          "attribution": null
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "422": {
+            "description": "Thiếu `ids`, quá 20 id, id trùng hoặc không phải số nguyên dương.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                "examples": {
+                  "missing_ids": {
+                    "value": {
+                      "detail": [
+                        {
+                          "loc": [
+                            "query",
+                            "ids"
+                          ],
+                          "msg": "Field required",
+                          "type": "missing"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "CSDL hoặc kho lưu trữ ảnh không khả dụng.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "service_unavailable": {
+                    "value": {
+                      "detail": "service_unavailable"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/meal-images/{image_id}": {
+      "parameters": [
+        {
+          "name": "image_id",
+          "in": "path",
+          "required": true,
+          "description": "Id ảnh (`MealImage.image_id`).",
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "ai_meal"
+        ],
+        "operationId": "getMealImage",
+        "summary": "Tải ảnh minh họa món ăn (task 5.11)",
+        "description": "Trả nội dung ảnh đã lưu ở kho lưu trữ của hệ thống. Backend đọc kho lưu trữ bằng thông tin xác thực phía server; client không bao giờ có key hay URL của kho lưu trữ và không tải ảnh trực tiếp từ kho ảnh nguồn.\n\nẢnh không đổi sau khi `ready`, nên được cache ở client (`Cache-Control: private, max-age=2592000, immutable`). Cùng lý do với `GET /meal-images`: chỉ cần phiên đăng nhập hợp lệ, không qua consent, không ghi nhật ký truy cập dữ liệu sức khỏe.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Nội dung ảnh, tối đa 2 MB.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cho phép client cache 30 ngày.",
+                "schema": {
+                  "type": "string",
+                  "const": "private, max-age=2592000, immutable"
+                }
+              }
+            },
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "contentMediaType": "image/jpeg"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "contentMediaType": "image/png"
+                }
+              },
+              "image/webp": {
+                "schema": {
+                  "type": "string",
+                  "contentMediaType": "image/webp"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "Ảnh không tồn tại hoặc chưa `ready` (đang `pending` hay `failed`). Client hiện ảnh mặc định.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "meal_image_not_found": {
+                    "value": {
+                      "detail": "meal_image_not_found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`image_id` không phải số nguyên dương.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "CSDL hoặc kho lưu trữ ảnh không khả dụng.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
                   "service_unavailable": {
                     "value": {
                       "detail": "service_unavailable"
@@ -11945,6 +12385,12 @@
               "maxLength": 40
             },
             "description": "Sở thích, tùy chọn. Ví dụ \"Ít cay\", \"Món nước\"."
+          },
+          "previous_suggestion_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "description": "Tùy chọn. Gửi khi người dùng bấm \"Gợi ý khác\": `suggestion_id` của gợi ý đang xem. Bản ghi phải thuộc chính người bệnh `patient_id` và cùng `meal_type`; nếu không, trả 422 `previous_suggestion_not_found`. Có field này thì request là một lần **gợi ý lại** và bị tính vào giới hạn 2 lần mỗi ngày (429 `refresh_limit_reached`)."
           }
         }
       },
@@ -12039,9 +12485,12 @@
           "kcal_estimate",
           "cook_minutes",
           "benefits",
-          "ingredients"
+          "ingredients",
+          "dish_type",
+          "is_new",
+          "image"
         ],
-        "description": "Một món trọn bữa do AI đề xuất, đã qua kiểm tra tất định của backend: không chứa dị ứng hay thực phẩm cần tránh trong `food_check.warnings` (khớp theo tên món và nguyên liệu, không phân biệt hoa thường và dấu).",
+        "description": "Một món trọn bữa do AI đề xuất, đã qua kiểm tra tất định của backend: không chứa dị ứng hay thực phẩm cần tránh trong `food_check.warnings` (khớp theo tên món và nguyên liệu, không phân biệt hoa thường và dấu). Món giữ lại khi gợi ý lại cũng được kiểm lại với dị ứng và `food_check` của request hiện tại. Mô tả ảnh nội bộ do AI sinh không bao giờ trả cho client.",
         "properties": {
           "name": {
             "type": "string",
@@ -12062,7 +12511,7 @@
             "type": "integer",
             "minimum": 50,
             "maximum": 2000,
-            "description": "Năng lượng **ước tính** của AI, không phải số liệu dinh dưỡng đã kiểm chứng. Client hiển thị kèm \"~\"."
+            "description": "Năng lượng **ước tính** của AI cho **một người, một bữa**, không phải số liệu dinh dưỡng đã kiểm chứng. Client hiển thị kèm \"~\" và \"/phần\"."
           },
           "cook_minutes": {
             "type": "integer",
@@ -12085,6 +12534,24 @@
             "items": {
               "$ref": "#/components/schemas/MealIngredient"
             }
+          },
+          "dish_type": {
+            "$ref": "#/components/schemas/MealDishType"
+          },
+          "is_new": {
+            "type": "boolean",
+            "description": "`true`: món mới tạo ở request này. `false`: món giữ lại từ gợi ý trước khi gợi ý lại (`previous_suggestion_id`). Request không có `previous_suggestion_id` thì mọi món đều `true`."
+          },
+          "image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MealImage"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`null` khi món sẽ không có ảnh (tính năng ảnh đang tắt, hoặc AI không cho mô tả ảnh hợp lệ); client hiện ảnh mặc định và không hỏi lại."
           }
         }
       },
@@ -12119,7 +12586,8 @@
           "suggestions",
           "food_check",
           "disclaimer",
-          "created_at"
+          "created_at",
+          "refreshes_remaining"
         ],
         "properties": {
           "suggestion_id": {
@@ -12137,7 +12605,7 @@
             "items": {
               "$ref": "#/components/schemas/MealSuggestion"
             },
-            "description": "Phần tử đầu là món chính; các phần tử sau là món thay thế (nút đổi món). Tên món không trùng nhau."
+            "description": "Phần tử đầu là món chính; các phần tử sau là món thay thế (nút \"Đổi món\" xoay vòng trên client, không gọi API). Tên món không trùng nhau. Khi gợi ý lại: các món mới (`is_new = true`) đứng trước, món giữ lại (`is_new = false`) đứng sau."
           },
           "food_check": {
             "$ref": "#/components/schemas/MealFoodCheck"
@@ -12151,6 +12619,156 @@
             "type": "string",
             "format": "date-time",
             "description": "Thời điểm tạo, có offset `+07:00`."
+          },
+          "refreshes_remaining": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Số lần \"Gợi ý khác\" (request có `previous_suggestion_id`) tài khoản còn dùng được trong ngày hiện tại theo giờ `Asia/Ho_Chi_Minh`, **sau khi** tính request này. Hiện tối đa 2 lần/ngày (cấu hình phía server, có thể đổi mà không đổi contract). Bằng 0 thì client tắt nút \"Gợi ý khác\"."
+          }
+        }
+      },
+      "MealDishType": {
+        "type": "string",
+        "enum": [
+          "com",
+          "mon_nuoc",
+          "mon_man",
+          "mon_xao",
+          "mon_hap_luoc",
+          "chao_sup",
+          "salad",
+          "khac"
+        ],
+        "description": "Loại món, dùng để đa dạng gợi ý (task 5.11): `com` cơm/món có tinh bột chính, `mon_nuoc` canh/bún/phở/món nước, `mon_man` món mặn (kho, rim, nướng), `mon_xao` món xào, `mon_hap_luoc` món hấp/luộc, `chao_sup` cháo/súp, `salad` gỏi/salad, `khac` loại khác. Chỉ phục vụ hiển thị và đa dạng hóa; không mang ý nghĩa an toàn. Client gặp giá trị lạ (phiên bản sau thêm) thì xử lý như `khac`."
+      },
+      "MealImageAttribution": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "provider",
+          "photographer_name",
+          "photographer_url",
+          "source_url"
+        ],
+        "description": "Thông tin ghi nguồn bắt buộc theo điều khoản của kho ảnh. Client hiển thị \"Ảnh: <photographer_name> / Pexels\" trên hoặc ngay dưới ảnh.",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": [
+              "pexels"
+            ],
+            "description": "Kho ảnh nguồn."
+          },
+          "photographer_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "photographer_url": {
+            "type": "string",
+            "format": "uri",
+            "maxLength": 500,
+            "description": "Trang tác giả trên kho ảnh. Client chỉ mở bằng trình duyệt ngoài; không tải ảnh từ đây."
+          },
+          "source_url": {
+            "type": "string",
+            "format": "uri",
+            "maxLength": 500,
+            "description": "Trang ảnh gốc trên kho ảnh. Client chỉ mở bằng trình duyệt ngoài; không tải ảnh từ đây."
+          }
+        }
+      },
+      "MealImageStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "ready",
+          "failed"
+        ],
+        "description": "`pending`: đang tìm hoặc tải ảnh; `ready`: tải được qua `url`; `failed`: không có ảnh (không tìm thấy, lỗi kho ảnh, file không hợp lệ, hoặc quá 2 phút chưa xong). `pending` và `failed` thì client hiện ảnh giữ chỗ / ảnh mặc định."
+      },
+      "MealImage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "image_id",
+          "status",
+          "url",
+          "attribution"
+        ],
+        "description": "Ảnh **minh họa** của món, tìm trong kho ảnh có giấy phép theo mô tả món do AI sinh, lưu ở kho lưu trữ của hệ thống. Ảnh dùng chung giữa mọi người dùng, có thể khác món thực tế; client luôn hiện nhãn \"Ảnh minh họa\". Ảnh không mang ý nghĩa an toàn.\n\nRàng buộc: `status` = `ready` ⇔ `url` và `attribution` khác `null`. `url` là đường dẫn tương đối tới `GET /meal-images/{image_id}` trên chính Backend API; client gọi kèm bearer token, không bao giờ gọi thẳng kho lưu trữ hay kho ảnh.",
+        "properties": {
+          "image_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "description": "Id ảnh, dùng cho `GET /meal-images` (đọc trạng thái) và `GET /meal-images/{image_id}`."
+          },
+          "status": {
+            "$ref": "#/components/schemas/MealImageStatus"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Ví dụ `/meal-images/42`. `null` khi chưa `ready`."
+          },
+          "attribution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MealImageAttribution"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "if": {
+          "properties": {
+            "status": {
+              "const": "ready"
+            }
+          }
+        },
+        "then": {
+          "properties": {
+            "url": {
+              "type": "string"
+            },
+            "attribution": {
+              "$ref": "#/components/schemas/MealImageAttribution"
+            }
+          }
+        },
+        "else": {
+          "properties": {
+            "url": {
+              "type": "null"
+            },
+            "attribution": {
+              "type": "null"
+            }
+          }
+        }
+      },
+      "MealImageStatusList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "$ref": "#/components/schemas/MealImage"
+            },
+            "description": "Trạng thái hiện tại của các ảnh được hỏi và còn tồn tại, theo thứ tự `ids` trong query. Id không tồn tại bị bỏ qua (không lỗi)."
           }
         }
       }
@@ -12897,6 +13515,39 @@
               "consent_revoked": {
                 "value": {
                   "detail": "consent_revoked"
+                }
+              }
+            }
+          }
+        }
+      },
+      "MealRefreshLimited": {
+        "description": "Tài khoản đã dùng hết 2 lần \"Gợi ý khác\" trong ngày (giờ `Asia/Ho_Chi_Minh`). AI không được gọi, không có gì được lưu. Chỉ áp cho request có `previous_suggestion_id`; request gợi ý đầu (không có field này) không bị giới hạn này. Luôn có header `Retry-After` tính tới 00:00 hôm sau. Client tắt nút \"Gợi ý khác\" và vẫn hiển thị gợi ý đang có.",
+        "headers": {
+          "Retry-After": {
+            "description": "Số giây còn lại tới 00:00 hôm sau giờ `Asia/Ho_Chi_Minh` (số nguyên dương).",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "Cache-Control": {
+            "description": "Không lưu phản hồi vào cache.",
+            "schema": {
+              "type": "string",
+              "const": "no-store"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "examples": {
+              "refresh_limit_reached": {
+                "value": {
+                  "detail": "refresh_limit_reached"
                 }
               }
             }
