@@ -2015,7 +2015,7 @@
         ],
         "operationId": "searchCatalogMedications",
         "summary": "Tìm thuốc trong danh mục",
-        "description": "Dùng khi người dùng chọn thuốc để thêm (`UserMedicationCreate.medication_id` = `id` trả về).\n\nSo khớp: bỏ khoảng trắng hai đầu của `q`; `q` là chuỗi con của `name` hoặc `active_ingredient` sau khi **cả hai phía** được chuẩn hóa: bỏ dấu tiếng Việt (kể cả `đ` → `d`) và không phân biệt hoa thường. Ví dụ `thuoc ho`, `THUỐC HO`, `thuốc ho` đều khớp `Thuốc ho Bảo Thanh`; `amlodipin` khớp `Amlodipin`. Khoảng trắng bên trong `q` được giữ nguyên (`thuoc  ho` với hai dấu cách không khớp `Thuốc ho`). Bỏ qua thuốc đã bị gỡ khỏi danh mục.\n\nThứ tự: thuốc có `name` (đã chuẩn hóa) bắt đầu bằng `q` (đã chuẩn hóa) đứng trước, sau đó theo `name` tăng dần, rồi `id` tăng dần. Trả tối đa `limit` thuốc, không phân trang.\n\nPhân quyền: mọi phiên hợp lệ (mobile hoặc admin_web). Danh mục không phải dữ liệu sức khỏe, không kiểm consent và không ghi nhật ký truy cập.",
+        "description": "Dùng khi người dùng chọn thuốc để thêm (`UserMedicationCreate.medication_id` = `id` trả về).\n\nChuẩn hóa: bỏ dấu tiếng Việt (kể cả `đ` → `d`) và không phân biệt hoa thường, áp cho cả `q` và dữ liệu danh mục.\n\nSo khớp theo **từ**: `q` đã chuẩn hóa được tách thành các từ theo khoảng trắng (nhiều khoảng trắng tính như một). Một số đứng ngay trước đơn vị hàm lượng (`mg`, `mcg`, `g`, `ml`, `iu`, `ui`, `%`) được ghép với đơn vị đó: `500 mg` và `500mg` là cùng một từ. Một thuốc khớp khi **mọi** từ là chuỗi con của `name`, `active_ingredient` hoặc `strength_text` của nó; từ có chữ số được so sau khi bỏ khoảng trắng ở các trường đó. Ví dụ `metformin 500 mg` khớp `Glucophage 500 mg` (hoạt chất `Metformin hydroclorid`, hàm lượng `500 mg`) nhưng không khớp `Metformin Stada 850mg`; `thuoc ho`, `THUỐC  HO` đều khớp `Thuốc ho Bảo Thanh`. Ký tự `%`, `_`, `\\` trong `q` là ký tự thường. Bỏ qua thuốc đã bị gỡ khỏi danh mục.\n\nThứ tự (tất định, liên quan nhất trước): (1) `name` bắt đầu bằng `q`; (2) mọi từ không có chữ số nằm trong `name`; (3) mọi từ có chữ số khớp `strength_text`; (4) độ giống của `name` với `q` giảm dần (thước đo là chi tiết của server); (5) `name` tăng dần, rồi `id` tăng dần. Trả tối đa `limit` thuốc, không phân trang. Client hiển thị theo đúng thứ tự trả về.\n\nPhân quyền: mọi phiên hợp lệ (mobile hoặc admin_web). Danh mục không phải dữ liệu sức khỏe, không kiểm consent và không ghi nhật ký truy cập.",
         "security": [
           {
             "bearerAuth": []
@@ -2125,6 +2125,27 @@
                     "value": {
                       "items": []
                     }
+                  },
+                  "ingredient_and_strength": {
+                    "summary": "q=metformin 500 mg (hoạt chất + hàm lượng, tên thuốc không chứa hoạt chất)",
+                    "value": {
+                      "items": [
+                        {
+                          "id": 2201,
+                          "name": "Metformin 500mg",
+                          "active_ingredient": "Metformin hydroclorid",
+                          "strength_text": "500mg",
+                          "dosage_form": "Viên nén bao phim"
+                        },
+                        {
+                          "id": 2310,
+                          "name": "Glucophage 500 mg",
+                          "active_ingredient": "Metformin hydroclorid",
+                          "strength_text": "500 mg",
+                          "dosage_form": "Viên nén bao phim"
+                        }
+                      ]
+                    }
                   }
                 }
               }
@@ -2165,7 +2186,7 @@
         ],
         "operationId": "matchCatalogMedicationsFromOcr",
         "summary": "Gợi ý thuốc trong danh mục từ văn bản OCR",
-        "description": "Gợi ý thuốc trong danh mục từ văn bản OCR của **một** vỉ/hộp thuốc (PB31, task 4.13). Văn bản do ML Kit đọc trên thiết bị; ảnh không rời thiết bị. Server không lưu văn bản và không ghi nó vào log.\n\nDùng sau khi quét: kết quả chỉ là gợi ý. Người dùng luôn phải kiểm tra và xác nhận trước khi thêm thuốc (QD-39); thêm thuốc vẫn qua `POST /medications` với `medication_id` = `id` của ứng viên đã chọn.\n\n**Trạng thái** (`status`), xét theo thứ tự:\n1. `no_match`: không có ứng viên đủ tin cậy tối thiểu, hoặc OCR đọc được hàm lượng mà danh mục không có hàm lượng đó cho tên thuốc này (không gán thuốc gần giống, QD-39). `items` rỗng. App mở tìm thủ công (`GET /catalog/medications`) với `suggested_query` điền sẵn.\n2. `low_confidence`: có ứng viên nhưng không đủ chắc để chọn sẵn: điểm dưới ngưỡng, hàm lượng xung đột, tên có nhiều hàm lượng mà OCR không đọc được hàm lượng, hai ứng viên khác nhau có điểm quá sát (thuốc nhìn giống/đọc giống), hoặc tra cứu bị cắt. App hiển thị `items` dạng \"có thể là\", **không chọn sẵn**, kèm lối vào tìm thủ công với `suggested_query`.\n3. `matched`: ứng viên đầu đủ tin cậy. `preselected_id` = `items[0].id`; app chọn sẵn ứng viên này nhưng người dùng vẫn phải bấm xác nhận. Khi `reasons` có `strength_unverified`, app phải nhắc người dùng đối chiếu hàm lượng in trên vỉ.\n\nNgưỡng và trọng số là cấu hình server, có thể đổi mà không đổi contract. Client không tự suy trạng thái từ `score`; chỉ dùng `status`, `preselected_id` và `reasons`.\n\n**Thứ tự `items`**: `score` giảm dần, rồi `id` tăng dần. Cùng văn bản và cùng danh mục luôn cho cùng kết quả. Các thuốc trùng tên, hàm lượng và dạng bào chế (khác số đăng ký) có thể cùng điểm; khi đó `reasons` có `tie`, `items` chứa cả nhóm (trong giới hạn `limit`) và app hiển thị cả nhóm. Nếu `status` = `matched`, `preselected_id` vẫn là `items[0].id` (id nhỏ nhất trong nhóm) và người dùng có thể đổi sang thuốc khác trong nhóm trước khi xác nhận.\n\nBỏ qua thuốc đã bị gỡ khỏi danh mục.\n\nPhân quyền: mọi phiên hợp lệ (mobile hoặc admin_web). Danh mục không phải dữ liệu sức khỏe, không kiểm consent và không ghi nhật ký truy cập.",
+        "description": "Gợi ý thuốc trong danh mục từ văn bản OCR của **một** vỉ/hộp thuốc (PB31, task 4.13). Văn bản do ML Kit đọc trên thiết bị; ảnh không rời thiết bị. Server không lưu văn bản và không ghi nó vào log.\n\nDùng sau khi quét. Người dùng luôn phải kiểm tra và xác nhận trước khi thêm thuốc (QD-39); thêm thuốc vẫn qua `POST /medications` với `medication_id` = `id` của thuốc đã chọn.\n\n**Trạng thái** (`status`), xét theo thứ tự:\n1. `no_match`: không có ứng viên đủ tin cậy tối thiểu, hoặc OCR đọc được hàm lượng mà danh mục không có hàm lượng đó cho tên thuốc này (không gán thuốc gần giống, QD-39). `items` rỗng. App không hiển thị thuốc nào: mời người dùng chụp lại mặt có tên thuốc, hoặc tự chọn tìm thủ công (`GET /catalog/medications`) với `suggested_query` điền sẵn (rỗng khi `null`). App không tự mở tìm thủ công.\n2. `low_confidence`: có ứng viên nhưng không đủ chắc để đưa ra một thuốc: điểm dưới ngưỡng, hàm lượng xung đột, tên có nhiều hàm lượng mà OCR không đọc được hàm lượng, hai thuốc khác nhau có điểm quá sát (thuốc nhìn giống/đọc giống), hoặc tra cứu bị cắt. App hiển thị **một** thuốc là `items[0]` giống như `matched`, kèm lời nhắc đối chiếu tên và hàm lượng với vỏ hộp vì server chưa chắc; không chọn sẵn và không tự mở tìm thủ công. Người dùng phải bấm xác nhận (QD-39), hoặc chọn \"không phải thuốc này\" để mở tìm thủ công với `suggested_query`.\n3. `matched`: ứng viên đầu đủ tin cậy. `preselected_id` = `items[0].id`. App hiển thị **một** thuốc là `items[0]`; người dùng vẫn phải bấm xác nhận, hoặc chọn \"không phải thuốc này\" để mở tìm thủ công. Khác với `low_confidence`, app không thêm lời nhắc đối chiếu. Khi `reasons` có `strength_unverified`, app phải nhắc người dùng đối chiếu hàm lượng in trên vỉ.\n\n**Điều kiện chặn `matched`** chỉ xét bằng chứng liên quan tới ứng viên đầu; dòng chữ không nói về thuốc (tên công ty, nhà thuốc, địa chỉ, mô tả bao bì) không chặn:\n- Một dòng OCR không phải hoạt chất chỉ chặn khi nó giống một thuốc khác ở mức tên nhãn hiệu và giống thuốc đó hơn ứng viên đầu. Một dòng là một phần tên của ứng viên đầu (tên in trên nhiều dòng) không chặn.\n- \"Hai thuốc khác nhau\" khi xét điểm sát nghĩa là khác tên chuẩn hóa (bỏ dấu, hàm lượng, số đứng riêng, từ chỉ dạng bào chế/bao bì), hoặc khác hàm lượng, hoặc khác dạng bào chế. Các dòng danh mục chỉ khác số đăng ký hoặc cách viết tên (ví dụ \"Atorvastatin 10\" và \"Atorvastatin 10mg\", cùng hàm lượng và dạng) là cùng một thuốc.\n- Tra cứu bị cắt chỉ chặn khi khóa bị cắt là khóa đã đưa ứng viên đầu lên (kể cả tìm gần đúng), hoặc khóa hoạt chất khi ứng viên đầu mang tên hoạt chất.\n- Chữ trông giống hàm lượng nhưng không đọc được chỉ chặn khi nằm trên dòng tên hoặc dòng hoạt chất của ứng viên đầu.\n- Hàm lượng chỉ có trong văn bản hoạt chất của danh mục (không có `strength_text` đọc được) được dùng để `matched` khi OCR đọc được đủ và trùng khớp toàn bộ các hàm lượng đó. Khi OCR không đọc được hàm lượng, thuốc như vậy không `matched`.\n\nNgưỡng và trọng số là cấu hình server, có thể đổi mà không đổi contract. Client không tự suy trạng thái từ `score`; chỉ dùng `status`, `preselected_id`, `suggested_query` và `reasons`.\n\n**Thứ tự `items`**: `score` giảm dần, rồi `id` tăng dần. Cùng văn bản và cùng danh mục luôn cho cùng kết quả. Các dòng danh mục là cùng một thuốc (định nghĩa ở trên) có thể cùng điểm; khi đó `reasons` có `tie` và `items` chứa cả nhóm (trong giới hạn `limit`). Nếu `status` = `matched`, `preselected_id` là `items[0].id` (id nhỏ nhất trong nhóm) và app chỉ hiển thị thuốc đó.\n\nBỏ qua thuốc đã bị gỡ khỏi danh mục.\n\nPhân quyền: mọi phiên hợp lệ (mobile hoặc admin_web). Danh mục không phải dữ liệu sức khỏe, không kiểm consent và không ghi nhật ký truy cập.",
         "security": [
           {
             "bearerAuth": []
@@ -2257,7 +2278,7 @@
                     }
                   },
                   "multiple_strengths": {
-                    "summary": "Chỉ đọc được tên; tên có nhiều hàm lượng: người dùng tự chọn",
+                    "summary": "Chỉ đọc được tên; tên có nhiều hàm lượng: app hiện `items[0]` kèm nhắc đối chiếu số mg trên vỏ hộp",
                     "value": {
                       "status": "low_confidence",
                       "items": [
@@ -2352,7 +2373,7 @@
                     }
                   },
                   "matched_tie": {
-                    "summary": "Nhiều thuốc cùng tên, hàm lượng, dạng bào chế (khác số đăng ký): chọn sẵn phần tử đầu, hiện cả nhóm để người dùng đổi",
+                    "summary": "Nhiều dòng danh mục là cùng một thuốc (khác số đăng ký): chọn sẵn phần tử đầu, app chỉ hiển thị thuốc đó",
                     "value": {
                       "status": "matched",
                       "items": [
@@ -2389,6 +2410,26 @@
                       "reasons": [
                         "tie"
                       ]
+                    }
+                  },
+                  "matched_derived_strength": {
+                    "summary": "Thuốc phối hợp chỉ ghi hàm lượng trong văn bản hoạt chất; OCR đọc đủ cả ba hàm lượng",
+                    "value": {
+                      "status": "matched",
+                      "items": [
+                        {
+                          "id": 53722,
+                          "name": "Decolgen Forte",
+                          "active_ingredient": "Paracetamol 500mg; Phenylephrin HCl 10mg; Clorpheniramin maleat 2mg",
+                          "strength_text": null,
+                          "dosage_form": "Viên nén",
+                          "has_active_ingredients": true,
+                          "score": 0.961
+                        }
+                      ],
+                      "preselected_id": 53722,
+                      "suggested_query": null,
+                      "reasons": []
                     }
                   }
                 }
@@ -11484,7 +11525,7 @@
       },
       "OcrMatchReason": {
         "type": "string",
-        "description": "Mã lý do ổn định (snake_case) giải thích `status`. Client bỏ qua mã không biết.\n\n- `strength_unverified`: OCR không đọc được hàm lượng; tên thuốc chỉ có một hàm lượng trong danh mục nên vẫn chọn sẵn. App nhắc đối chiếu hàm lượng.\n- `strength_unparsed`: có chữ trông giống hàm lượng nhưng không đọc được.\n- `multiple_strengths`: OCR không có hàm lượng và tên thuốc có nhiều hàm lượng trong danh mục; `items` gồm các hàm lượng đó.\n- `strength_conflict`: OCR đọc được nhiều hàm lượng khác nhau.\n- `strength_mismatch`: OCR đọc được hàm lượng mà danh mục không có cho tên thuốc này (chỉ đi với `no_match`).\n- `lasa_close`: hai thuốc khác nhau có tên gần giống và điểm quá sát.\n- `tie`: nhiều thuốc cùng tên, hàm lượng, dạng bào chế có cùng điểm.\n- `truncated`: có quá nhiều thuốc khớp một khóa tìm, danh sách có thể chưa đầy đủ.\n- `below_threshold`: điểm cao nhất dưới ngưỡng.",
+        "description": "Mã lý do ổn định (snake_case) giải thích `status`. Client bỏ qua mã không biết.\n\n- `strength_unverified`: OCR không đọc được hàm lượng; tên thuốc chỉ có một hàm lượng trong danh mục nên vẫn chọn sẵn. App nhắc đối chiếu hàm lượng.\n- `strength_unparsed`: có chữ trông giống hàm lượng nhưng không đọc được, trên dòng tên hoặc dòng hoạt chất của ứng viên đầu.\n- `multiple_strengths`: OCR không có hàm lượng và tên thuốc có nhiều hàm lượng trong danh mục; `items` gồm các hàm lượng đó.\n- `strength_conflict`: OCR đọc được nhiều hàm lượng khác nhau.\n- `strength_mismatch`: OCR đọc được hàm lượng mà danh mục không có cho tên thuốc này (chỉ đi với `no_match`).\n- `lasa_close`: hai thuốc khác nhau (khác tên chuẩn hóa) có tên gần giống và điểm quá sát.\n- `tie`: nhiều dòng danh mục là cùng một thuốc (cùng tên chuẩn hóa, hàm lượng, dạng bào chế; khác số đăng ký) có cùng điểm.\n- `truncated`: có quá nhiều thuốc khớp khóa tìm đã đưa ứng viên đầu lên, danh sách có thể chưa đầy đủ.\n- `below_threshold`: điểm cao nhất dưới ngưỡng.",
         "enum": [
           "strength_unverified",
           "strength_unparsed",
@@ -11569,7 +11610,7 @@
             "items": {
               "$ref": "#/components/schemas/OcrMatchCandidate"
             },
-            "description": "Rỗng khi `status` = `no_match`; có ít nhất một phần tử ở hai trạng thái còn lại."
+            "description": "Rỗng khi `status` = `no_match`; có ít nhất một phần tử ở hai trạng thái còn lại. App chỉ hiển thị `items[0]`, ở cả `matched` và `low_confidence` (xem mô tả operation)."
           },
           "preselected_id": {
             "type": [
@@ -11586,7 +11627,7 @@
             ],
             "minLength": 1,
             "maxLength": 100,
-            "description": "Chuỗi gợi ý để điền sẵn vào tìm thủ công (`GET /catalog/medications?q=`), là tên thuốc đọc được tin cậy nhất. Luôn có khi `status` khác `matched`, trừ khi văn bản không có tên nào dùng được (ví dụ chỉ có hạn dùng, số lô); khi đó `null`. Khi `matched` luôn `null`."
+            "description": "Chuỗi điền sẵn vào tìm thủ công (`GET /catalog/medications?q=`): tên thuốc đọc được tin cậy nhất, viết thường, không dấu, không hàm lượng. Chọn theo thứ tự: (1) tên của ứng viên đầu khi có ứng viên; (2) dòng OCR có tên khớp danh mục; (3) dòng OCR lặp nhiều nhất không phải tên công ty, nhà thuốc, cảnh báo kê đơn hay mô tả bao bì. Luôn có khi `status` khác `matched`, trừ khi văn bản không có tên nào dùng được (ví dụ chỉ có hạn dùng, số lô, tên công ty); khi đó `null`. Khi `matched` luôn `null`."
           },
           "reasons": {
             "type": "array",
