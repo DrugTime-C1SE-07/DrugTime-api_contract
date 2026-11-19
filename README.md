@@ -9,6 +9,28 @@ clients. `openapi.generated.json` is an ignored comparison artifact, not a
 replacement for this contract. Authentication, medication matching, and all other
 existing operations retain their current definitions.
 
+## Linked patients for the family patient switcher
+
+`GET /family/patients` supplies PB22's patient switcher. It requires an app session
+bearer token and returns `items` containing only `patient_id` and nullable
+`patient_full_name`. Each patient must have an active link to the caller, sharing
+enabled, and current `family_sharing` and `health_data` consent. The caller's own
+consents do not grant or remove access to another patient's data.
+
+No query parameters or body are accepted (422); there is no pagination or silent
+truncation. Names sort by Unicode code point ascending, null last, with patient ID
+as the tie-breaker. No eligible patients returns 200 with an empty list. Admins
+receive 403 `khong_co_quyen`; missing or invalid tokens receive 401.
+
+Permissions are checked from the database on every call. Successful patient reads
+are audited per returned patient under `danh_sach_benh_nhan_lien_ket`; empty lists
+and admin denials use request-level metadata audit without fabricated patient IDs.
+Audit or database failure returns 503 `service_unavailable`, never a partial list.
+Allowed access logs for one request commit together; an audit failure rolls back
+all of that request's allowed entries. Denied audit uses its separate transaction.
+All responses carry `Cache-Control: no-store`. This list does not grant permission
+to subsequent health requests: those endpoints recheck their own authorization.
+
 ## Health profile and conditions
 
 | Method and path | Purpose | Success |

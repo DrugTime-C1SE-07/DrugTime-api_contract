@@ -37,6 +37,10 @@
     {
       "name": "adherence",
       "description": "Lịch sử tuân thủ dùng thuốc và dữ liệu liều của người bệnh."
+    },
+    {
+      "name": "ai_meal",
+      "description": "Gợi ý bữa ăn bằng AI cho người bệnh, kèm kiểm tra thuốc–thực phẩm tất định."
     }
   ],
   "paths": {
@@ -2011,7 +2015,7 @@
         ],
         "operationId": "searchCatalogMedications",
         "summary": "Tìm thuốc trong danh mục",
-        "description": "Dùng khi người dùng chọn thuốc để thêm (`UserMedicationCreate.medication_id` = `id` trả về).\n\nSo khớp: bỏ khoảng trắng hai đầu của `q`; `q` là chuỗi con của `name` hoặc `active_ingredient` sau khi **cả hai phía** được chuẩn hóa: bỏ dấu tiếng Việt (kể cả `đ` → `d`) và không phân biệt hoa thường. Ví dụ `thuoc ho`, `THUỐC HO`, `thuốc ho` đều khớp `Thuốc ho Bảo Thanh`; `amlodipin` khớp `Amlodipin`. Khoảng trắng bên trong `q` được giữ nguyên (`thuoc  ho` với hai dấu cách không khớp `Thuốc ho`). Bỏ qua thuốc đã bị gỡ khỏi danh mục.\n\nThứ tự: thuốc có `name` (đã chuẩn hóa) bắt đầu bằng `q` (đã chuẩn hóa) đứng trước, sau đó theo `name` tăng dần, rồi `id` tăng dần. Trả tối đa `limit` thuốc, không phân trang.\n\nPhân quyền: mọi phiên hợp lệ (mobile hoặc admin_web). Danh mục không phải dữ liệu sức khỏe, không kiểm consent và không ghi nhật ký truy cập.",
+        "description": "Dùng khi người dùng chọn thuốc để thêm (`UserMedicationCreate.medication_id` = `id` trả về).\n\nChuẩn hóa: bỏ dấu tiếng Việt (kể cả `đ` → `d`) và không phân biệt hoa thường, áp cho cả `q` và dữ liệu danh mục.\n\nSo khớp theo **từ**: `q` đã chuẩn hóa được tách thành các từ theo khoảng trắng (nhiều khoảng trắng tính như một). Một số đứng ngay trước đơn vị hàm lượng (`mg`, `mcg`, `g`, `ml`, `iu`, `ui`, `%`) được ghép với đơn vị đó: `500 mg` và `500mg` là cùng một từ. Một thuốc khớp khi **mọi** từ là chuỗi con của `name`, `active_ingredient` hoặc `strength_text` của nó; từ có chữ số được so sau khi bỏ khoảng trắng ở các trường đó. Ví dụ `metformin 500 mg` khớp `Glucophage 500 mg` (hoạt chất `Metformin hydroclorid`, hàm lượng `500 mg`) nhưng không khớp `Metformin Stada 850mg`; `thuoc ho`, `THUỐC  HO` đều khớp `Thuốc ho Bảo Thanh`. Ký tự `%`, `_`, `\\` trong `q` là ký tự thường. Bỏ qua thuốc đã bị gỡ khỏi danh mục.\n\nThứ tự (tất định, liên quan nhất trước): (1) `name` bắt đầu bằng `q`; (2) mọi từ không có chữ số nằm trong `name`; (3) mọi từ có chữ số khớp `strength_text`; (4) độ giống của `name` với `q` giảm dần (thước đo là chi tiết của server); (5) `name` tăng dần, rồi `id` tăng dần. Trả tối đa `limit` thuốc, không phân trang. Client hiển thị theo đúng thứ tự trả về.\n\nPhân quyền: mọi phiên hợp lệ (mobile hoặc admin_web). Danh mục không phải dữ liệu sức khỏe, không kiểm consent và không ghi nhật ký truy cập.",
         "security": [
           {
             "bearerAuth": []
@@ -2121,6 +2125,27 @@
                     "value": {
                       "items": []
                     }
+                  },
+                  "ingredient_and_strength": {
+                    "summary": "q=metformin 500 mg (hoạt chất + hàm lượng, tên thuốc không chứa hoạt chất)",
+                    "value": {
+                      "items": [
+                        {
+                          "id": 2201,
+                          "name": "Metformin 500mg",
+                          "active_ingredient": "Metformin hydroclorid",
+                          "strength_text": "500mg",
+                          "dosage_form": "Viên nén bao phim"
+                        },
+                        {
+                          "id": 2310,
+                          "name": "Glucophage 500 mg",
+                          "active_ingredient": "Metformin hydroclorid",
+                          "strength_text": "500 mg",
+                          "dosage_form": "Viên nén bao phim"
+                        }
+                      ]
+                    }
                   }
                 }
               }
@@ -2161,7 +2186,7 @@
         ],
         "operationId": "matchCatalogMedicationsFromOcr",
         "summary": "Gợi ý thuốc trong danh mục từ văn bản OCR",
-        "description": "Gợi ý thuốc trong danh mục từ văn bản OCR của **một** vỉ/hộp thuốc (PB31, task 4.13). Văn bản do ML Kit đọc trên thiết bị; ảnh không rời thiết bị. Server không lưu văn bản và không ghi nó vào log.\n\nDùng sau khi quét: kết quả chỉ là gợi ý. Người dùng luôn phải kiểm tra và xác nhận trước khi thêm thuốc (QD-39); thêm thuốc vẫn qua `POST /medications` với `medication_id` = `id` của ứng viên đã chọn.\n\n**Trạng thái** (`status`), xét theo thứ tự:\n1. `no_match`: không có ứng viên đủ tin cậy tối thiểu, hoặc OCR đọc được hàm lượng mà danh mục không có hàm lượng đó cho tên thuốc này (không gán thuốc gần giống, QD-39). `items` rỗng. App mở tìm thủ công (`GET /catalog/medications`) với `suggested_query` điền sẵn.\n2. `low_confidence`: có ứng viên nhưng không đủ chắc để chọn sẵn: điểm dưới ngưỡng, hàm lượng xung đột, tên có nhiều hàm lượng mà OCR không đọc được hàm lượng, hai ứng viên khác nhau có điểm quá sát (thuốc nhìn giống/đọc giống), hoặc tra cứu bị cắt. App hiển thị `items` dạng \"có thể là\", **không chọn sẵn**, kèm lối vào tìm thủ công với `suggested_query`.\n3. `matched`: ứng viên đầu đủ tin cậy. `preselected_id` = `items[0].id`; app chọn sẵn ứng viên này nhưng người dùng vẫn phải bấm xác nhận. Khi `reasons` có `strength_unverified`, app phải nhắc người dùng đối chiếu hàm lượng in trên vỉ.\n\nNgưỡng và trọng số là cấu hình server, có thể đổi mà không đổi contract. Client không tự suy trạng thái từ `score`; chỉ dùng `status`, `preselected_id` và `reasons`.\n\n**Thứ tự `items`**: `score` giảm dần, rồi `id` tăng dần. Cùng văn bản và cùng danh mục luôn cho cùng kết quả. Các thuốc trùng tên, hàm lượng và dạng bào chế (khác số đăng ký) có thể cùng điểm; khi đó `reasons` có `tie`, `items` chứa cả nhóm (trong giới hạn `limit`) và app hiển thị cả nhóm. Nếu `status` = `matched`, `preselected_id` vẫn là `items[0].id` (id nhỏ nhất trong nhóm) và người dùng có thể đổi sang thuốc khác trong nhóm trước khi xác nhận.\n\nBỏ qua thuốc đã bị gỡ khỏi danh mục.\n\nPhân quyền: mọi phiên hợp lệ (mobile hoặc admin_web). Danh mục không phải dữ liệu sức khỏe, không kiểm consent và không ghi nhật ký truy cập.",
+        "description": "Gợi ý thuốc trong danh mục từ văn bản OCR của **một** vỉ/hộp thuốc (PB31, task 4.13). Văn bản do ML Kit đọc trên thiết bị; ảnh không rời thiết bị. Server không lưu văn bản và không ghi nó vào log.\n\nDùng sau khi quét. Người dùng luôn phải kiểm tra và xác nhận trước khi thêm thuốc (QD-39); thêm thuốc vẫn qua `POST /medications` với `medication_id` = `id` của thuốc đã chọn.\n\n**Trạng thái** (`status`), xét theo thứ tự:\n1. `no_match`: không có ứng viên đủ tin cậy tối thiểu, hoặc OCR đọc được hàm lượng mà danh mục không có hàm lượng đó cho tên thuốc này (không gán thuốc gần giống, QD-39). `items` rỗng. App không hiển thị thuốc nào: mời người dùng chụp lại mặt có tên thuốc, hoặc tự chọn tìm thủ công (`GET /catalog/medications`) với `suggested_query` điền sẵn (rỗng khi `null`). App không tự mở tìm thủ công.\n2. `low_confidence`: có ứng viên nhưng không đủ chắc để đưa ra một thuốc: điểm dưới ngưỡng, hàm lượng xung đột, tên có nhiều hàm lượng mà OCR không đọc được hàm lượng, hai thuốc khác nhau có điểm quá sát (thuốc nhìn giống/đọc giống), hoặc tra cứu bị cắt. App hiển thị **một** thuốc là `items[0]` giống như `matched`, kèm lời nhắc đối chiếu tên và hàm lượng với vỏ hộp vì server chưa chắc; không chọn sẵn và không tự mở tìm thủ công. Người dùng phải bấm xác nhận (QD-39), hoặc chọn \"không phải thuốc này\" để mở tìm thủ công với `suggested_query`.\n3. `matched`: ứng viên đầu đủ tin cậy. `preselected_id` = `items[0].id`. App hiển thị **một** thuốc là `items[0]`; người dùng vẫn phải bấm xác nhận, hoặc chọn \"không phải thuốc này\" để mở tìm thủ công. Khác với `low_confidence`, app không thêm lời nhắc đối chiếu. Khi `reasons` có `strength_unverified`, app phải nhắc người dùng đối chiếu hàm lượng in trên vỉ.\n\n**Điều kiện chặn `matched`** chỉ xét bằng chứng liên quan tới ứng viên đầu; dòng chữ không nói về thuốc (tên công ty, nhà thuốc, địa chỉ, mô tả bao bì) không chặn:\n- Một dòng OCR không phải hoạt chất chỉ chặn khi nó giống một thuốc khác ở mức tên nhãn hiệu và giống thuốc đó hơn ứng viên đầu. Một dòng là một phần tên của ứng viên đầu (tên in trên nhiều dòng) không chặn.\n- \"Hai thuốc khác nhau\" khi xét điểm sát nghĩa là khác tên chuẩn hóa (bỏ dấu, hàm lượng, số đứng riêng, từ chỉ dạng bào chế/bao bì), hoặc khác hàm lượng, hoặc khác dạng bào chế. Các dòng danh mục chỉ khác số đăng ký hoặc cách viết tên (ví dụ \"Atorvastatin 10\" và \"Atorvastatin 10mg\", cùng hàm lượng và dạng) là cùng một thuốc.\n- Tra cứu bị cắt chỉ chặn khi khóa bị cắt là khóa đã đưa ứng viên đầu lên (kể cả tìm gần đúng), hoặc khóa hoạt chất khi ứng viên đầu mang tên hoạt chất.\n- Chữ trông giống hàm lượng nhưng không đọc được chỉ chặn khi nằm trên dòng tên hoặc dòng hoạt chất của ứng viên đầu.\n- Hàm lượng chỉ có trong văn bản hoạt chất của danh mục (không có `strength_text` đọc được) được dùng để `matched` khi OCR đọc được đủ và trùng khớp toàn bộ các hàm lượng đó. Khi OCR không đọc được hàm lượng, thuốc như vậy không `matched`.\n\nNgưỡng và trọng số là cấu hình server, có thể đổi mà không đổi contract. Client không tự suy trạng thái từ `score`; chỉ dùng `status`, `preselected_id`, `suggested_query` và `reasons`.\n\n**Thứ tự `items`**: `score` giảm dần, rồi `id` tăng dần. Cùng văn bản và cùng danh mục luôn cho cùng kết quả. Các dòng danh mục là cùng một thuốc (định nghĩa ở trên) có thể cùng điểm; khi đó `reasons` có `tie` và `items` chứa cả nhóm (trong giới hạn `limit`). Nếu `status` = `matched`, `preselected_id` là `items[0].id` (id nhỏ nhất trong nhóm) và app chỉ hiển thị thuốc đó.\n\nBỏ qua thuốc đã bị gỡ khỏi danh mục.\n\nPhân quyền: mọi phiên hợp lệ (mobile hoặc admin_web). Danh mục không phải dữ liệu sức khỏe, không kiểm consent và không ghi nhật ký truy cập.",
         "security": [
           {
             "bearerAuth": []
@@ -2253,7 +2278,7 @@
                     }
                   },
                   "multiple_strengths": {
-                    "summary": "Chỉ đọc được tên; tên có nhiều hàm lượng: người dùng tự chọn",
+                    "summary": "Chỉ đọc được tên; tên có nhiều hàm lượng: app hiện `items[0]` kèm nhắc đối chiếu số mg trên vỏ hộp",
                     "value": {
                       "status": "low_confidence",
                       "items": [
@@ -2348,7 +2373,7 @@
                     }
                   },
                   "matched_tie": {
-                    "summary": "Nhiều thuốc cùng tên, hàm lượng, dạng bào chế (khác số đăng ký): chọn sẵn phần tử đầu, hiện cả nhóm để người dùng đổi",
+                    "summary": "Nhiều dòng danh mục là cùng một thuốc (khác số đăng ký): chọn sẵn phần tử đầu, app chỉ hiển thị thuốc đó",
                     "value": {
                       "status": "matched",
                       "items": [
@@ -2385,6 +2410,26 @@
                       "reasons": [
                         "tie"
                       ]
+                    }
+                  },
+                  "matched_derived_strength": {
+                    "summary": "Thuốc phối hợp chỉ ghi hàm lượng trong văn bản hoạt chất; OCR đọc đủ cả ba hàm lượng",
+                    "value": {
+                      "status": "matched",
+                      "items": [
+                        {
+                          "id": 53722,
+                          "name": "Decolgen Forte",
+                          "active_ingredient": "Paracetamol 500mg; Phenylephrin HCl 10mg; Clorpheniramin maleat 2mg",
+                          "strength_text": null,
+                          "dosage_form": "Viên nén",
+                          "has_active_ingredients": true,
+                          "score": 0.961
+                        }
+                      ],
+                      "preselected_id": 53722,
+                      "suggested_query": null,
+                      "reasons": []
                     }
                   }
                 }
@@ -7752,59 +7797,63 @@
         "tags": [
           "family"
         ],
-        "summary": "Get Linked Patients",
         "operationId": "listMyLinkedPatients",
+        "summary": "Người thân lấy danh sách bệnh nhân hiện được phép theo dõi",
+        "description": "Nguồn dữ liệu cho bộ chọn bệnh nhân PB22 (task 5.13). Chỉ trả bệnh nhân mà người gọi có liên kết active, sharing_enabled=true, và bệnh nhân có cả consent family_sharing lẫn health_data còn hiệu lực. Thiếu bất kỳ điều kiện nào thì loại bệnh nhân đó; pending, rejected, revoked và quan hệ của tài khoản khác không xuất hiện. Mỗi patient_id xuất hiện một lần, không tự thêm chính người gọi. Không cấp hay thay đổi quyền chia sẻ.\n\nXác thực bằng app session bearer token của tài khoản cá nhân. Tài khoản cá nhân có thể đóng vai người bệnh và người thân ở các quan hệ khác nhau; không đòi hỏi một role family riêng trong token. Không kiểm consent của người gọi cho dữ liệu của họ để quyết định quyền xem bệnh nhân khác. Admin nhận 403 khong_co_quyen. Token chỉ xác định danh tính; quyền và cả hai consent của từng bệnh nhân được đọc lại từ DB ở mỗi request qua PEP hiện có. Tắt chia sẻ, hủy liên kết hoặc rút một trong hai consent có hiệu lực ngay ở request kế tiếp với cùng token.\n\nKhông có query parameter, path parameter hoặc body. Có bất kỳ query hay body nào, kể cả patient_id, user_id, family_user_id, limit hoặc cursor: 422 ValidationError; không dùng selector từ client để chọn chủ danh sách. Token được kiểm trước quyền gọi; cấu trúc request có thể bị từ chối 422 trước kiểm admin.\n\nResponse chỉ có patient_id và patient_full_name; không có thông tin liên lạc, hồ sơ hay dữ liệu thuốc/lịch/liều. Tên hiện tại được trim; thiếu tên hoặc tên chỉ có khoảng trắng được trả null, không thay bằng email hay số điện thoại. Không lọc bỏ patient chỉ vì thiếu hoặc trùng tên. Sắp theo patient_full_name tăng dần theo mã Unicode, phân biệt hoa/thường, không bỏ dấu; null cuối cùng, tên bằng nhau thì patient_id tăng dần. Không phân trang, không cắt ngầm; items=[] khi không có ai đủ quyền, HTTP 200. Không trả lý do loại của từng bệnh nhân.\n\nAudit: mỗi bệnh nhân thực sự được trả có một access_logs allowed, actor là người thân gọi API và data_scope=danh_sach_benh_nhan_lien_ket; không ghi sai thành xem thuốc hoặc hồ sơ. Bệnh nhân bị bộ lọc loại không phải một lần truy cập dữ liệu của họ: không tạo access_logs denied chỉ vì lọc, và không biến toàn bộ request thành 403. Danh sách rỗng ghi một sự kiện audit metadata ở mức request, không tạo access_logs với patient giả. Admin bị từ chối ghi một sự kiện denied bền vững ở mức request trong transaction riêng, không duyệt các bệnh nhân để ghi log. Audit chỉ có metadata cần truy vết; không ghi tên, dữ liệu y tế, token hoặc danh sách tên. Mọi audit bắt buộc phải ghi bền vững trước khi trả response. Các access_logs allowed của một request nằm trong cùng transaction: lỗi giữa chừng thì rollback toàn bộ các allowed của request, không commit một phần; không ảnh hưởng denied đã ghi bền vững ở transaction riêng. DB, PEP hoặc audit không khả dụng: 503 service_unavailable, không trả danh sách một phần.\n\nCache-Control: no-store trên mọi response của endpoint. Client người thân chỉ giữ danh sách trong bộ nhớ phiên, không lưu bền; tải lại khi mở bộ chọn. Có mặt trong danh sách không phải bằng chứng quyền cho request sau: mỗi endpoint theo patient_id vẫn kiểm quyền hiện hành độc lập.",
         "security": [
           {
             "bearerAuth": []
           }
         ],
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
+        "x-health-scope": "danh_sach_benh_nhan_lien_ket",
+        "x-health-audit-self": false,
         "responses": {
           "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LinkedPatientList"
-                },
-                "example": {
-                  "items": [
-                    {
-                      "patient_id": "11111111-1111-4111-8111-111111111111",
-                      "patient_full_name": "Mẹ Hoa"
-                    }
-                  ]
-                }
-              }
-            },
+            "description": "Toàn bộ bệnh nhân hiện được phép theo dõi; danh sách rỗng là thành công.",
             "headers": {
               "Cache-Control": {
+                "description": "Không cache danh sách quan hệ và quyền bệnh nhân.",
                 "schema": {
                   "type": "string",
                   "const": "no-store"
                 }
               }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkedPatientList"
+                },
+                "examples": {
+                  "patients": {
+                    "value": {
+                      "items": [
+                        {
+                          "patient_id": "3f0c2a9e-7b1d-4e58-9c6a-2d4b8e1f0a73",
+                          "patient_full_name": "Nguyễn Văn An"
+                        },
+                        {
+                          "patient_id": "b7dd501a-4ebe-4564-a171-d317710effaa",
+                          "patient_full_name": "Nguyễn Văn An"
+                        },
+                        {
+                          "patient_id": "e4c7f2a9-1d30-4b86-9a50-7c3e6d8f1204",
+                          "patient_full_name": null
+                        }
+                      ]
+                    }
+                  },
+                  "empty": {
+                    "value": {
+                      "items": []
+                    }
+                  }
+                }
+              }
             }
           },
           "401": {
+            "description": "Thiếu hoặc sai app session token, phiên hết hạn hoặc tài khoản đã bị xóa. Không trả danh sách; detail là câu mô tả, client không so khớp nội dung.",
             "headers": {
               "Cache-Control": {
                 "schema": {
@@ -7817,12 +7866,15 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "Missing bearer token"
                 }
               }
-            },
-            "description": "Unauthorized"
+            }
           },
           "403": {
+            "description": "Admin gọi chức năng người thân: khong_co_quyen, ghi denied bền vững ở mức request. Không có bệnh nhân đủ quyền là 200 items=[], không phải 403. Không trả consent_revoked cho consent của bệnh nhân khác.",
             "headers": {
               "Cache-Control": {
                 "schema": {
@@ -7840,10 +7892,40 @@
                   "detail": "khong_co_quyen"
                 }
               }
+            }
+          },
+          "422": {
+            "description": "Có query parameter hoặc body: ValidationError. Không nhận bất kỳ selector, bộ lọc hay tham số phân trang nào.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
             },
-            "description": "Forbidden"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                "example": {
+                  "detail": [
+                    {
+                      "loc": [
+                        "query",
+                        "patient_id"
+                      ],
+                      "msg": "Extra inputs are not permitted",
+                      "type": "extra_forbidden"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "503": {
+            "description": "DB, kiểm quyền hoặc audit không khả dụng; kể cả không ghi bền vững được denied khi từ chối admin. Không trả danh sách hay kết quả một phần; client có thể retry GET và mỗi lần gọi lại vẫn kiểm quyền, ghi audit.",
             "headers": {
               "Cache-Control": {
                 "schema": {
@@ -7856,33 +7938,14 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "service_unavailable"
                 }
               }
-            },
-            "description": "Service Unavailable"
-          },
-          "422": {
-            "headers": {
-              "Cache-Control": {
-                "schema": {
-                  "type": "string",
-                  "const": "no-store"
-                }
-              }
-            },
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PatientListValidationError"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
+            }
           }
-        },
-        "x-health-scope": "danh_sach_benh_nhan_lien_ket",
-        "x-health-audit-self": false,
-        "description": "Đồng bộ contract với handler backend hiện có, không thêm quyền. App session bearer token; admin không có quyền đọc. Không lưu cache. Danh sách chỉ gồm patient hiện đủ active link + sharing_enabled + family_sharing + health_data; lọc trước khi đọc tên. Items rỗng không cung cấp lý do hoặc ngày thu hồi. Tên trim rỗng trả null; sắp tên tăng dần, tên null cuối, tie patient_id. Không nhận query/body; audit allowed theo patient và empty theo request; audit lỗi trả 503."
+        }
       }
     },
     "/notifications": {
@@ -9473,6 +9536,747 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/NotificationUpdateRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/patients/{patient_id}/meal-suggestions": {
+      "parameters": [
+        {
+          "name": "patient_id",
+          "in": "path",
+          "required": true,
+          "description": "Id tài khoản người bệnh (UUID), phải là chính người gọi. Sai định dạng trả 422 `ValidationError`.",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "tags": [
+          "ai_meal"
+        ],
+        "operationId": "createMealSuggestions",
+        "summary": "Gợi ý bữa ăn bằng AI cho người bệnh (PB37, Task 4.26)",
+        "description": "Tạo gợi ý cho một bữa: 1 món chính và tối đa 5 món thay thế, mỗi món có loại món, ảnh minh họa, lợi ích và nguyên liệu, kèm tab \"Nên tránh\" từ kiểm tra thuốc–thực phẩm tất định và lời miễn trừ.\n\n**Nguồn dữ liệu.** Thuốc đang dùng và bệnh nền: backend tự đọc từ hồ sơ. Dị ứng, hạn chế, sở thích: client gửi trong body ở mỗi request, backend không lưu. Backend gửi cho nhà cung cấp AI (Anthropic) chỉ tên hoạt chất, tên bệnh nền, thực phẩm cần tránh, dị ứng, hạn chế, sở thích, bữa ăn và (khi gợi ý lại) tên các món cũ cần tránh lặp; không gửi định danh người dùng.\n\n**Kiểm tra trước khi trả.** Output của AI được validate tất định: món chứa dị ứng hoặc thực phẩm cần tránh bị loại; lợi ích trỏ tới bệnh nền, dị ứng, hạn chế không có của người dùng hoặc nhắc tên thuốc bị loại; `dish_type` ngoài enum được thay bằng `khac`; không còn món mới nào thì trả 502 `llm_invalid_output`. AI không bao giờ quyết định có hay không có tương tác: `food_check` do engine tất định tính. kcal và định lượng là cho một người, một bữa.\n\n**Gợi ý lại (\"Gợi ý khác\").** Gửi `previous_suggestion_id`. Backend giữ tối đa 3 món của gợi ý trước (bỏ món chính cũ, giữ thứ tự gốc), kiểm lại từng món với dị ứng và `food_check` hiện tại, rồi chỉ yêu cầu AI sinh 3 món mới. Response: món mới trước (`is_new = true`), món giữ lại sau (`is_new = false`, giữ nguyên ảnh), tổng 1–6 món, tên không trùng. AI lỗi thì trả lỗi như bình thường, không bao giờ trả riêng món cũ. Mỗi lần gợi ý lại thành công lưu một bản ghi mới có tham chiếu tới gợi ý trước.\n\n**Giới hạn gợi ý lại.** Mỗi tài khoản tối đa 2 lần gợi ý lại thành công mỗi ngày (giờ `Asia/Ho_Chi_Minh`, gộp mọi bữa). Lần gợi ý lại lỗi (422, 502, 503) không bị tính. Hết lượt → 429 `refresh_limit_reached`. Hai request gợi ý lại gửi đồng thời không vượt được giới hạn: request vượt nhận 429. Response 200 luôn có `refreshes_remaining`.\n\n**Ảnh món.** Response không chờ ảnh. Món chưa có ảnh trả `image.status = pending`; Worker tìm ảnh ở kho ảnh (Pexels) chỉ bằng một cụm từ mô tả món, không kèm dữ liệu người dùng. Client hỏi lại trạng thái bằng `GET /meal-images?ids=...` và tải ảnh bằng `GET /meal-images/{image_id}`. Ảnh dùng chung theo món giữa mọi người dùng.\n\n**Quyền.** Chỉ chính người bệnh, có consent `ai_meal`, và không có yêu cầu xóa tài khoản đang chờ. Người thân (kể cả có liên kết và chia sẻ) và admin luôn nhận 403. Quyền kiểm lại ở mỗi request: rút consent có hiệu lực ngay ở request kế tiếp. Mỗi request được phép ghi nhật ký truy cập `allowed`; không ghi được nhật ký thì request thất bại, không trả gợi ý.\n\n**Thứ tự kiểm.** token (401) → body (422 `ValidationError`) → quyền (403) → `previous_suggestion_id` (422 `previous_suggestion_not_found`) → giới hạn gợi ý lại (429) → gọi AI. Request bị 401, 403, 422 hay 429 không bao giờ tốn một lần gọi AI.\n\n**Thời gian và gửi lại.** Backend trả trong khoảng 10 giây (AI quá 8 giây → 503 `llm_unavailable`); client đặt timeout ≥ 15 giây. Endpoint không idempotent: mỗi request thành công gọi AI một lần và lưu một bản ghi mới. \"Đổi món\" xoay vòng trên client, không gọi API. Client không tự động retry; sau 502/503 chỉ gửi lại khi người dùng chủ động. Không có khóa idempotency.\n\n**App của người dùng không cần lưu gợi ý vào bộ nhớ bền**; mọi response có `Cache-Control: no-store`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-health-scope": "goi_y_bua_an",
+        "x-health-audit-self": true,
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MealSuggestionRequest"
+              },
+              "examples": {
+                "lunch_with_allergy": {
+                  "summary": "Bữa trưa, dị ứng tôm, không hạn chế",
+                  "value": {
+                    "meal_type": "trua",
+                    "allergies": {
+                      "none": false,
+                      "items": [
+                        "Tôm"
+                      ]
+                    },
+                    "dietary_restrictions": {
+                      "none": true,
+                      "items": []
+                    },
+                    "preferences": [
+                      "Ít cay"
+                    ]
+                  }
+                },
+                "refresh_lunch": {
+                  "summary": "Gợi ý khác cho bữa trưa, từ gợi ý 3051",
+                  "value": {
+                    "meal_type": "trua",
+                    "previous_suggestion_id": 3051,
+                    "allergies": {
+                      "none": false,
+                      "items": [
+                        "Tôm"
+                      ]
+                    },
+                    "dietary_restrictions": {
+                      "none": true,
+                      "items": []
+                    },
+                    "preferences": [
+                      "Ít cay"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Gợi ý đã được tạo và lưu.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MealSuggestionResponse"
+                },
+                "examples": {
+                  "lunch": {
+                    "summary": "Gợi ý đầu: hai món, một ảnh đã sẵn sàng, một ảnh đang tìm",
+                    "value": {
+                      "suggestion_id": 3051,
+                      "meal_type": "trua",
+                      "suggestions": [
+                        {
+                          "name": "Cơm gạo lứt & ức gà áp chảo",
+                          "dish_type": "com",
+                          "is_new": true,
+                          "tags": [
+                            "Ít muối",
+                            "Nhiều rau"
+                          ],
+                          "kcal_estimate": 480,
+                          "cook_minutes": 20,
+                          "image": {
+                            "image_id": 42,
+                            "status": "ready",
+                            "url": "/meal-images/42",
+                            "attribution": {
+                              "provider": "pexels",
+                              "photographer_name": "Nguyễn Văn A",
+                              "photographer_url": "https://www.pexels.com/@example-a",
+                              "source_url": "https://www.pexels.com/photo/example-111/"
+                            }
+                          },
+                          "benefits": [
+                            {
+                              "text": "Ít muối, tốt cho huyết áp",
+                              "related_to": {
+                                "type": "condition",
+                                "label": "Tăng huyết áp"
+                              }
+                            },
+                            {
+                              "text": "Không có tôm",
+                              "related_to": {
+                                "type": "allergy",
+                                "label": "Tôm"
+                              }
+                            },
+                            {
+                              "text": "Nhiều chất xơ, no lâu",
+                              "related_to": {
+                                "type": "general",
+                                "label": null
+                              }
+                            }
+                          ],
+                          "ingredients": [
+                            {
+                              "name": "Gạo lứt",
+                              "amount": "60 g",
+                              "group": "chinh",
+                              "use_sparingly": false
+                            },
+                            {
+                              "name": "Ức gà",
+                              "amount": "120 g",
+                              "group": "chinh",
+                              "use_sparingly": false
+                            },
+                            {
+                              "name": "Cải thìa",
+                              "amount": "100 g",
+                              "group": "chinh",
+                              "use_sparingly": false
+                            },
+                            {
+                              "name": "Muối",
+                              "amount": "¼ thìa cà phê",
+                              "group": "gia_vi",
+                              "use_sparingly": true
+                            }
+                          ]
+                        },
+                        {
+                          "name": "Bún cá rô đồng nấu cà chua",
+                          "dish_type": "mon_nuoc",
+                          "is_new": true,
+                          "tags": [
+                            "Món nước"
+                          ],
+                          "kcal_estimate": 420,
+                          "cook_minutes": 35,
+                          "image": {
+                            "image_id": 57,
+                            "status": "pending",
+                            "url": null,
+                            "attribution": null
+                          },
+                          "benefits": [
+                            {
+                              "text": "Đạm từ cá, ít mỡ",
+                              "related_to": {
+                                "type": "general",
+                                "label": null
+                              }
+                            }
+                          ],
+                          "ingredients": [
+                            {
+                              "name": "Bún tươi",
+                              "amount": "150 g",
+                              "group": "chinh",
+                              "use_sparingly": false
+                            },
+                            {
+                              "name": "Cá rô đồng",
+                              "amount": "100 g",
+                              "group": "chinh",
+                              "use_sparingly": false
+                            },
+                            {
+                              "name": "Nước mắm",
+                              "amount": "1 thìa cà phê",
+                              "group": "gia_vi",
+                              "use_sparingly": true
+                            }
+                          ]
+                        }
+                      ],
+                      "food_check": {
+                        "status": "co_tuong_tac",
+                        "warnings": [
+                          {
+                            "rule_id": 81,
+                            "version_id": 930,
+                            "ingredient": {
+                              "id": 620,
+                              "standard_name": "Losartan"
+                            },
+                            "food_to_avoid": "Thực phẩm giàu kali (chuối, cam) và muối thay thế chứa kali",
+                            "severity_level": 2,
+                            "reason": "Có thể làm tăng kali máu.",
+                            "source": "Dược thư Quốc gia Việt Nam 2022"
+                          }
+                        ]
+                      },
+                      "disclaimer": "Gợi ý do AI tạo, chỉ mang tính tham khảo, không thay thế tư vấn của bác sĩ hay chuyên gia dinh dưỡng. Hãy hỏi bác sĩ hoặc dược sĩ trước khi thay đổi chế độ ăn.",
+                      "refreshes_remaining": 2,
+                      "created_at": "2026-11-16T11:30:05+07:00"
+                    }
+                  },
+                  "refresh": {
+                    "summary": "Gợi ý lại: một món mới (không có ảnh), một món giữ lại; món chính cũ bị bỏ",
+                    "value": {
+                      "suggestion_id": 3052,
+                      "meal_type": "trua",
+                      "suggestions": [
+                        {
+                          "name": "Cá basa hấp gừng",
+                          "dish_type": "mon_hap_luoc",
+                          "is_new": true,
+                          "tags": [
+                            "Ít dầu"
+                          ],
+                          "kcal_estimate": 350,
+                          "cook_minutes": 25,
+                          "image": null,
+                          "benefits": [
+                            {
+                              "text": "Hấp, ít muối, hợp huyết áp",
+                              "related_to": {
+                                "type": "condition",
+                                "label": "Tăng huyết áp"
+                              }
+                            }
+                          ],
+                          "ingredients": [
+                            {
+                              "name": "Cá basa",
+                              "amount": "150 g",
+                              "group": "chinh",
+                              "use_sparingly": false
+                            },
+                            {
+                              "name": "Gừng",
+                              "amount": "1 nhánh nhỏ",
+                              "group": "gia_vi",
+                              "use_sparingly": false
+                            },
+                            {
+                              "name": "Nước tương",
+                              "amount": "1 thìa cà phê",
+                              "group": "gia_vi",
+                              "use_sparingly": true
+                            }
+                          ]
+                        },
+                        {
+                          "name": "Bún cá rô đồng nấu cà chua",
+                          "dish_type": "mon_nuoc",
+                          "is_new": false,
+                          "tags": [
+                            "Món nước"
+                          ],
+                          "kcal_estimate": 420,
+                          "cook_minutes": 35,
+                          "image": {
+                            "image_id": 57,
+                            "status": "ready",
+                            "url": "/meal-images/57",
+                            "attribution": {
+                              "provider": "pexels",
+                              "photographer_name": "Trần Thị B",
+                              "photographer_url": "https://www.pexels.com/@example-b",
+                              "source_url": "https://www.pexels.com/photo/example-222/"
+                            }
+                          },
+                          "benefits": [
+                            {
+                              "text": "Đạm từ cá, ít mỡ",
+                              "related_to": {
+                                "type": "general",
+                                "label": null
+                              }
+                            }
+                          ],
+                          "ingredients": [
+                            {
+                              "name": "Bún tươi",
+                              "amount": "150 g",
+                              "group": "chinh",
+                              "use_sparingly": false
+                            },
+                            {
+                              "name": "Cá rô đồng",
+                              "amount": "100 g",
+                              "group": "chinh",
+                              "use_sparingly": false
+                            },
+                            {
+                              "name": "Nước mắm",
+                              "amount": "1 thìa cà phê",
+                              "group": "gia_vi",
+                              "use_sparingly": true
+                            }
+                          ]
+                        }
+                      ],
+                      "food_check": {
+                        "status": "co_tuong_tac",
+                        "warnings": [
+                          {
+                            "rule_id": 81,
+                            "version_id": 930,
+                            "ingredient": {
+                              "id": 620,
+                              "standard_name": "Losartan"
+                            },
+                            "food_to_avoid": "Thực phẩm giàu kali (chuối, cam) và muối thay thế chứa kali",
+                            "severity_level": 2,
+                            "reason": "Có thể làm tăng kali máu.",
+                            "source": "Dược thư Quốc gia Việt Nam 2022"
+                          }
+                        ]
+                      },
+                      "disclaimer": "Gợi ý do AI tạo, chỉ mang tính tham khảo, không thay thế tư vấn của bác sĩ hay chuyên gia dinh dưỡng. Hãy hỏi bác sĩ hoặc dược sĩ trước khi thay đổi chế độ ăn.",
+                      "refreshes_remaining": 1,
+                      "created_at": "2026-11-16T11:32:40+07:00"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/MealSuggestionForbidden"
+          },
+          "422": {
+            "description": "Body hoặc `patient_id` không hợp lệ (thiếu `allergies`/`dietary_restrictions`, `none` mâu thuẫn với `items`, `meal_type` ngoài enum, chuỗi quá dài, field lạ): `detail` là mảng `ValidationError`. Hoặc lỗi nghiệp vụ, `detail` là chuỗi:\n- `previous_suggestion_not_found`: `previous_suggestion_id` không tồn tại, thuộc người bệnh khác, hoặc khác `meal_type`. Ba trường hợp trả giống hệt nhau. Client bỏ tham chiếu và gợi ý lại từ đầu (request không có `previous_suggestion_id`).\n\nAI không được gọi, không có gì được lưu, không bị tính lượt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    }
+                  ]
+                },
+                "examples": {
+                  "allergies_inconsistent": {
+                    "summary": "`none` = false nhưng `items` rỗng",
+                    "value": {
+                      "detail": [
+                        {
+                          "loc": [
+                            "body",
+                            "allergies"
+                          ],
+                          "msg": "Value error, items must not be empty when none is false",
+                          "type": "value_error"
+                        }
+                      ]
+                    }
+                  },
+                  "previous_suggestion_not_found": {
+                    "value": {
+                      "detail": "previous_suggestion_not_found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/MealRefreshLimited"
+          },
+          "502": {
+            "description": "AI trả nội dung không dùng được: sai cấu trúc, từ chối trả lời, bị cắt ngang, hoặc mọi món đều bị loại sau kiểm tra. Không trả gợi ý một phần, không lưu gì. Người dùng có thể thử lại.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "llm_invalid_output": {
+                    "value": {
+                      "detail": "llm_invalid_output"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Không tạo được gợi ý lúc này; không lưu gì.\n- `llm_disabled`: tính năng gợi ý bằng AI đang tắt hoặc chưa cấu hình. Client hiển thị \"tính năng tạm ngưng\", không gợi ý thử lại.\n- `llm_unavailable`: nhà cung cấp AI lỗi, quá tải hoặc quá 8 giây. Người dùng có thể thử lại sau.\n- `service_unavailable`: CSDL hoặc nhật ký truy cập không khả dụng.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "llm_disabled": {
+                    "value": {
+                      "detail": "llm_disabled"
+                    }
+                  },
+                  "llm_unavailable": {
+                    "value": {
+                      "detail": "llm_unavailable"
+                    }
+                  },
+                  "service_unavailable": {
+                    "value": {
+                      "detail": "service_unavailable"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/meal-images": {
+      "get": {
+        "tags": [
+          "ai_meal"
+        ],
+        "operationId": "listMealImageStatuses",
+        "summary": "Đọc trạng thái ảnh minh họa món ăn (task 5.11)",
+        "description": "Client hỏi lại các ảnh đang `pending` sau khi nhận gợi ý bữa ăn. Gợi ý: hỏi mỗi 3 giây, tối đa 30 giây kể từ khi nhận gợi ý, chỉ khi màn đang hiển thị; dừng khi không còn ảnh `pending`. Hết 30 giây vẫn `pending` thì client hiện ảnh mặc định. Backend bảo đảm một ảnh không ở `pending` quá 2 phút.\n\n**Không phải dữ liệu sức khỏe.** Ảnh là tài nguyên dùng chung theo món, không gắn với người dùng; response không cho biết ai đã được gợi ý món nào. Vì vậy endpoint chỉ cần phiên đăng nhập hợp lệ (mọi tài khoản), không qua consent, không ghi nhật ký truy cập dữ liệu sức khỏe.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ids",
+            "in": "query",
+            "required": true,
+            "style": "form",
+            "explode": true,
+            "description": "Id ảnh cần hỏi, lặp tham số: `?ids=42&ids=57`. 1–20 id, không trùng.",
+            "schema": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 20,
+              "uniqueItems": true,
+              "items": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 1
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Trạng thái hiện tại của các ảnh còn tồn tại.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MealImageStatusList"
+                },
+                "examples": {
+                  "mixed": {
+                    "value": {
+                      "items": [
+                        {
+                          "image_id": 42,
+                          "status": "ready",
+                          "url": "/meal-images/42",
+                          "attribution": {
+                            "provider": "pexels",
+                            "photographer_name": "Nguyễn Văn A",
+                            "photographer_url": "https://www.pexels.com/@example-a",
+                            "source_url": "https://www.pexels.com/photo/example-111/"
+                          }
+                        },
+                        {
+                          "image_id": 57,
+                          "status": "failed",
+                          "url": null,
+                          "attribution": null
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "422": {
+            "description": "Thiếu `ids`, quá 20 id, id trùng hoặc không phải số nguyên dương.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                "examples": {
+                  "missing_ids": {
+                    "value": {
+                      "detail": [
+                        {
+                          "loc": [
+                            "query",
+                            "ids"
+                          ],
+                          "msg": "Field required",
+                          "type": "missing"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "CSDL hoặc kho lưu trữ ảnh không khả dụng.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "service_unavailable": {
+                    "value": {
+                      "detail": "service_unavailable"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/meal-images/{image_id}": {
+      "parameters": [
+        {
+          "name": "image_id",
+          "in": "path",
+          "required": true,
+          "description": "Id ảnh (`MealImage.image_id`).",
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "ai_meal"
+        ],
+        "operationId": "getMealImage",
+        "summary": "Tải ảnh minh họa món ăn (task 5.11)",
+        "description": "Trả nội dung ảnh đã lưu ở kho lưu trữ của hệ thống. Backend đọc kho lưu trữ bằng thông tin xác thực phía server; client không bao giờ có key hay URL của kho lưu trữ và không tải ảnh trực tiếp từ kho ảnh nguồn.\n\nẢnh không đổi sau khi `ready`, nên được cache ở client (`Cache-Control: private, max-age=2592000, immutable`). Cùng lý do với `GET /meal-images`: chỉ cần phiên đăng nhập hợp lệ, không qua consent, không ghi nhật ký truy cập dữ liệu sức khỏe.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Nội dung ảnh, tối đa 2 MB.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cho phép client cache 30 ngày.",
+                "schema": {
+                  "type": "string",
+                  "const": "private, max-age=2592000, immutable"
+                }
+              }
+            },
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "contentMediaType": "image/jpeg"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "contentMediaType": "image/png"
+                }
+              },
+              "image/webp": {
+                "schema": {
+                  "type": "string",
+                  "contentMediaType": "image/webp"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "Ảnh không tồn tại hoặc chưa `ready` (đang `pending` hay `failed`). Client hiện ảnh mặc định.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "meal_image_not_found": {
+                    "value": {
+                      "detail": "meal_image_not_found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`image_id` không phải số nguyên dương.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "CSDL hoặc kho lưu trữ ảnh không khả dụng.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Không lưu phản hồi vào cache.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "service_unavailable": {
+                    "value": {
+                      "detail": "service_unavailable"
+                    }
+                  }
+                }
               }
             }
           }
@@ -12271,7 +13075,7 @@
       },
       "OcrMatchReason": {
         "type": "string",
-        "description": "Mã lý do ổn định (snake_case) giải thích `status`. Client bỏ qua mã không biết.\n\n- `strength_unverified`: OCR không đọc được hàm lượng; tên thuốc chỉ có một hàm lượng trong danh mục nên vẫn chọn sẵn. App nhắc đối chiếu hàm lượng.\n- `strength_unparsed`: có chữ trông giống hàm lượng nhưng không đọc được.\n- `multiple_strengths`: OCR không có hàm lượng và tên thuốc có nhiều hàm lượng trong danh mục; `items` gồm các hàm lượng đó.\n- `strength_conflict`: OCR đọc được nhiều hàm lượng khác nhau.\n- `strength_mismatch`: OCR đọc được hàm lượng mà danh mục không có cho tên thuốc này (chỉ đi với `no_match`).\n- `lasa_close`: hai thuốc khác nhau có tên gần giống và điểm quá sát.\n- `tie`: nhiều thuốc cùng tên, hàm lượng, dạng bào chế có cùng điểm.\n- `truncated`: có quá nhiều thuốc khớp một khóa tìm, danh sách có thể chưa đầy đủ.\n- `below_threshold`: điểm cao nhất dưới ngưỡng.",
+        "description": "Mã lý do ổn định (snake_case) giải thích `status`. Client bỏ qua mã không biết.\n\n- `strength_unverified`: OCR không đọc được hàm lượng; tên thuốc chỉ có một hàm lượng trong danh mục nên vẫn chọn sẵn. App nhắc đối chiếu hàm lượng.\n- `strength_unparsed`: có chữ trông giống hàm lượng nhưng không đọc được, trên dòng tên hoặc dòng hoạt chất của ứng viên đầu.\n- `multiple_strengths`: OCR không có hàm lượng và tên thuốc có nhiều hàm lượng trong danh mục; `items` gồm các hàm lượng đó.\n- `strength_conflict`: OCR đọc được nhiều hàm lượng khác nhau.\n- `strength_mismatch`: OCR đọc được hàm lượng mà danh mục không có cho tên thuốc này (chỉ đi với `no_match`).\n- `lasa_close`: hai thuốc khác nhau (khác tên chuẩn hóa) có tên gần giống và điểm quá sát.\n- `tie`: nhiều dòng danh mục là cùng một thuốc (cùng tên chuẩn hóa, hàm lượng, dạng bào chế; khác số đăng ký) có cùng điểm.\n- `truncated`: có quá nhiều thuốc khớp khóa tìm đã đưa ứng viên đầu lên, danh sách có thể chưa đầy đủ.\n- `below_threshold`: điểm cao nhất dưới ngưỡng.",
         "enum": [
           "strength_unverified",
           "strength_unparsed",
@@ -12356,7 +13160,7 @@
             "items": {
               "$ref": "#/components/schemas/OcrMatchCandidate"
             },
-            "description": "Rỗng khi `status` = `no_match`; có ít nhất một phần tử ở hai trạng thái còn lại."
+            "description": "Rỗng khi `status` = `no_match`; có ít nhất một phần tử ở hai trạng thái còn lại. App chỉ hiển thị `items[0]`, ở cả `matched` và `low_confidence` (xem mô tả operation)."
           },
           "preselected_id": {
             "type": [
@@ -12373,7 +13177,7 @@
             ],
             "minLength": 1,
             "maxLength": 100,
-            "description": "Chuỗi gợi ý để điền sẵn vào tìm thủ công (`GET /catalog/medications?q=`), là tên thuốc đọc được tin cậy nhất. Luôn có khi `status` khác `matched`, trừ khi văn bản không có tên nào dùng được (ví dụ chỉ có hạn dùng, số lô); khi đó `null`. Khi `matched` luôn `null`."
+            "description": "Chuỗi điền sẵn vào tìm thủ công (`GET /catalog/medications?q=`): tên thuốc đọc được tin cậy nhất, viết thường, không dấu, không hàm lượng. Chọn theo thứ tự: (1) tên của ứng viên đầu khi có ứng viên; (2) dòng OCR có tên khớp danh mục; (3) dòng OCR lặp nhiều nhất không phải tên công ty, nhà thuốc, cảnh báo kê đơn hay mô tả bao bì. Luôn có khi `status` khác `matched`, trừ khi văn bản không có tên nào dùng được (ví dụ chỉ có hạn dùng, số lô, tên công ty); khi đó `null`. Khi `matched` luôn `null`."
           },
           "reasons": {
             "type": "array",
@@ -13086,28 +13890,34 @@
         }
       },
       "LinkedPatientList": {
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/LinkedPatient"
-            },
-            "type": "array",
-            "title": "Items"
-          }
-        },
-        "additionalProperties": false,
         "type": "object",
+        "additionalProperties": false,
         "required": [
           "items"
         ],
-        "title": "LinkedPatientList"
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LinkedPatient"
+            },
+            "description": "Danh sách đầy đủ, không phân trang/cắt ngầm, không trùng patient_id. Chỉ quan hệ active + sharing bật + cả family_sharing và health_data còn hiệu lực. Sắp tên tăng dần theo mã Unicode, phân biệt hoa/thường và dấu, null cuối; tie-break patient_id tăng dần."
+          }
+        }
       },
       "LinkedPatient": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "patient_id",
+          "patient_full_name"
+        ],
+        "description": "Thông tin tối thiểu của một bệnh nhân mà caller hiện được phép theo dõi. patient_id là khóa kỹ thuật; giao diện chỉ hiển thị tên.",
         "properties": {
           "patient_id": {
             "type": "string",
             "format": "uuid",
-            "title": "Patient Id"
+            "description": "Định danh bệnh nhân dùng cho các API theo patient_id; mỗi API vẫn kiểm quyền lại."
           },
           "patient_full_name": {
             "anyOf": [
@@ -13119,16 +13929,9 @@
                 "type": "null"
               }
             ],
-            "title": "Patient Full Name"
+            "description": "Tên hiện tại đã trim; null khi chưa có hoặc chỉ có khoảng trắng. Không thay bằng thông tin liên lạc. Tên trùng vẫn là các mục riêng theo patient_id."
           }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "patient_id",
-          "patient_full_name"
-        ],
-        "title": "LinkedPatient"
+        }
       },
       "PatientListValidationError": {
         "properties": {
@@ -13537,6 +14340,480 @@
           "total",
           "unread_count"
         ]
+      },
+      "MealType": {
+        "type": "string",
+        "enum": [
+          "sang",
+          "trua",
+          "toi"
+        ],
+        "description": "Bữa ăn: `sang` (sáng), `trua` (trưa), `toi` (tối)."
+      },
+      "DietaryDeclaration": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "none",
+          "items"
+        ],
+        "description": "Khai báo bắt buộc (QD-40) cho dị ứng hoặc hạn chế ăn uống. Chỉ có hai dạng hợp lệ:\n- `none` = `true` và `items` rỗng: người dùng xác nhận **không có**.\n- `none` = `false` và `items` có 1–10 mục.\n\nKhông có trạng thái \"chưa biết\": client chưa hỏi được người dùng thì không gọi endpoint. Mọi dạng khác trả 422 `ValidationError`.",
+        "properties": {
+          "none": {
+            "type": "boolean"
+          },
+          "items": {
+            "type": "array",
+            "maxItems": 10,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            },
+            "description": "Tên tự do, ví dụ \"Tôm\", \"Hải sản\", \"Ăn chay\". Backend trim khoảng trắng."
+          }
+        },
+        "if": {
+          "properties": {
+            "none": {
+              "const": true
+            }
+          }
+        },
+        "then": {
+          "properties": {
+            "items": {
+              "maxItems": 0
+            }
+          }
+        },
+        "else": {
+          "properties": {
+            "items": {
+              "minItems": 1
+            }
+          }
+        }
+      },
+      "MealSuggestionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "meal_type",
+          "allergies",
+          "dietary_restrictions"
+        ],
+        "description": "Ngữ cảnh do client cung cấp cho mỗi lần gợi ý. Backend **không lưu** dị ứng, hạn chế và sở thích này; thuốc đang dùng và bệnh nền backend tự đọc từ hồ sơ người bệnh, client không gửi.",
+        "properties": {
+          "meal_type": {
+            "$ref": "#/components/schemas/MealType"
+          },
+          "allergies": {
+            "$ref": "#/components/schemas/DietaryDeclaration",
+            "description": "Dị ứng thực phẩm."
+          },
+          "dietary_restrictions": {
+            "$ref": "#/components/schemas/DietaryDeclaration",
+            "description": "Hạn chế ăn uống (ví dụ ăn chay, kiêng đường)."
+          },
+          "preferences": {
+            "type": "array",
+            "maxItems": 5,
+            "uniqueItems": true,
+            "default": [],
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            },
+            "description": "Sở thích, tùy chọn. Ví dụ \"Ít cay\", \"Món nước\"."
+          },
+          "previous_suggestion_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "description": "Tùy chọn. Gửi khi người dùng bấm \"Gợi ý khác\": `suggestion_id` của gợi ý đang xem. Bản ghi phải thuộc chính người bệnh `patient_id` và cùng `meal_type`; nếu không, trả 422 `previous_suggestion_not_found`. Có field này thì request là một lần **gợi ý lại** và bị tính vào giới hạn 2 lần mỗi ngày (429 `refresh_limit_reached`)."
+          }
+        }
+      },
+      "MealBenefitTarget": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "type",
+          "label"
+        ],
+        "description": "Lợi ích này gắn với điều gì của người dùng. Backend chỉ giữ lợi ích gắn với bệnh nền có trong hồ sơ, dị ứng hoặc hạn chế có trong request, hoặc lợi ích chung; lợi ích trỏ tới thứ khác bị loại.",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "condition",
+              "allergy",
+              "restriction",
+              "general"
+            ],
+            "description": "`condition`: bệnh nền; `allergy`: dị ứng; `restriction`: hạn chế ăn uống; `general`: lợi ích dinh dưỡng chung."
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Tên hiển thị của bệnh nền, dị ứng hoặc hạn chế (nguyên văn từ hồ sơ hoặc request). `null` khi `type` = `general`."
+          }
+        }
+      },
+      "MealBenefit": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "text",
+          "related_to"
+        ],
+        "description": "Một lợi ích của món, hiển thị ở tab \"Lợi ích\". Không bao giờ chứa tên thuốc hay kết luận \"an toàn\".",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "related_to": {
+            "$ref": "#/components/schemas/MealBenefitTarget"
+          }
+        }
+      },
+      "MealIngredient": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "amount",
+          "group",
+          "use_sparingly"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "amount": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 30,
+            "description": "Định lượng ước tính cho một người, ví dụ \"60 g\", \"¼ thìa cà phê\"."
+          },
+          "group": {
+            "type": "string",
+            "enum": [
+              "chinh",
+              "gia_vi"
+            ],
+            "description": "`chinh`: nguyên liệu chính; `gia_vi`: gia vị."
+          },
+          "use_sparingly": {
+            "type": "boolean",
+            "description": "`true`: nên dùng ít (ví dụ muối, nước mắm)."
+          }
+        }
+      },
+      "MealSuggestion": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "tags",
+          "kcal_estimate",
+          "cook_minutes",
+          "benefits",
+          "ingredients",
+          "dish_type",
+          "is_new",
+          "image"
+        ],
+        "description": "Một món trọn bữa do AI đề xuất, đã qua kiểm tra tất định của backend: không chứa dị ứng hay thực phẩm cần tránh trong `food_check.warnings` (khớp theo tên món và nguyên liệu, không phân biệt hoa thường và dấu). Món giữ lại khi gợi ý lại cũng được kiểm lại với dị ứng và `food_check` của request hiện tại. Mô tả ảnh nội bộ do AI sinh không bao giờ trả cho client.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "tags": {
+            "type": "array",
+            "maxItems": 4,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20
+            },
+            "description": "Chip ngắn, ví dụ \"Ít muối\"."
+          },
+          "kcal_estimate": {
+            "type": "integer",
+            "minimum": 50,
+            "maximum": 2000,
+            "description": "Năng lượng **ước tính** của AI cho **một người, một bữa**, không phải số liệu dinh dưỡng đã kiểm chứng. Client hiển thị kèm \"~\" và \"/phần\"."
+          },
+          "cook_minutes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 240,
+            "description": "Thời gian nấu ước tính (phút)."
+          },
+          "benefits": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 6,
+            "items": {
+              "$ref": "#/components/schemas/MealBenefit"
+            }
+          },
+          "ingredients": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 15,
+            "items": {
+              "$ref": "#/components/schemas/MealIngredient"
+            }
+          },
+          "dish_type": {
+            "$ref": "#/components/schemas/MealDishType"
+          },
+          "is_new": {
+            "type": "boolean",
+            "description": "`true`: món mới tạo ở request này. `false`: món giữ lại từ gợi ý trước khi gợi ý lại (`previous_suggestion_id`). Request không có `previous_suggestion_id` thì mọi món đều `true`."
+          },
+          "image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MealImage"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`null` khi món sẽ không có ảnh (tính năng ảnh đang tắt, hoặc AI không cho mô tả ảnh hợp lệ); client hiện ảnh mặc định và không hỏi lại."
+          }
+        }
+      },
+      "MealFoodCheck": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "status",
+          "warnings"
+        ],
+        "description": "Kiểm tra thuốc–thực phẩm **tất định** (không dùng AI) cho mọi thuốc đang dùng của người bệnh, tính lại ở mỗi request; cùng quy tắc và cùng nghĩa với `GET /patients/{patient_id}/food-interactions`. Đây là nội dung tab \"Nên tránh\". Client không bao giờ hiển thị kết quả như \"an toàn\".",
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/FoodInteractionStatus",
+            "description": "Trạng thái tổng, theo quy tắc gộp ở `FoodInteractionStatus` (không có thuốc nào → `khong_du_du_lieu`)."
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FoodInteractionWarning"
+            },
+            "description": "Mọi quy tắc đang hiệu lực của mọi hoạt chất trong thuốc đang dùng, sắp `severity_level` giảm dần → `food_to_avoid` → `version_id` tăng dần. Khác rỗng ⇔ `status` = `co_tuong_tac`."
+          }
+        }
+      },
+      "MealSuggestionResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "suggestion_id",
+          "meal_type",
+          "suggestions",
+          "food_check",
+          "disclaimer",
+          "created_at",
+          "refreshes_remaining"
+        ],
+        "properties": {
+          "suggestion_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Id bản ghi gợi ý đã lưu. Mỗi request thành công tạo một bản ghi mới."
+          },
+          "meal_type": {
+            "$ref": "#/components/schemas/MealType"
+          },
+          "suggestions": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 6,
+            "items": {
+              "$ref": "#/components/schemas/MealSuggestion"
+            },
+            "description": "Phần tử đầu là món chính; các phần tử sau là món thay thế (nút \"Đổi món\" xoay vòng trên client, không gọi API). Tên món không trùng nhau. Khi gợi ý lại: các món mới (`is_new = true`) đứng trước, món giữ lại (`is_new = false`) đứng sau."
+          },
+          "food_check": {
+            "$ref": "#/components/schemas/MealFoodCheck"
+          },
+          "disclaimer": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Lời miễn trừ bắt buộc (R-07), do backend gắn, không lấy từ AI. Client hiển thị nguyên văn. Giá trị hiện tại: \"Gợi ý do AI tạo, chỉ mang tính tham khảo, không thay thế tư vấn của bác sĩ hay chuyên gia dinh dưỡng. Hãy hỏi bác sĩ hoặc dược sĩ trước khi thay đổi chế độ ăn.\" Câu chữ có thể đổi ở 5.10 mà không đổi contract."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Thời điểm tạo, có offset `+07:00`."
+          },
+          "refreshes_remaining": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Số lần \"Gợi ý khác\" (request có `previous_suggestion_id`) tài khoản còn dùng được trong ngày hiện tại theo giờ `Asia/Ho_Chi_Minh`, **sau khi** tính request này. Hiện tối đa 2 lần/ngày (cấu hình phía server, có thể đổi mà không đổi contract). Bằng 0 thì client tắt nút \"Gợi ý khác\"."
+          }
+        }
+      },
+      "MealDishType": {
+        "type": "string",
+        "enum": [
+          "com",
+          "mon_nuoc",
+          "mon_man",
+          "mon_xao",
+          "mon_hap_luoc",
+          "chao_sup",
+          "salad",
+          "khac"
+        ],
+        "description": "Loại món, dùng để đa dạng gợi ý (task 5.11): `com` cơm/món có tinh bột chính, `mon_nuoc` canh/bún/phở/món nước, `mon_man` món mặn (kho, rim, nướng), `mon_xao` món xào, `mon_hap_luoc` món hấp/luộc, `chao_sup` cháo/súp, `salad` gỏi/salad, `khac` loại khác. Chỉ phục vụ hiển thị và đa dạng hóa; không mang ý nghĩa an toàn. Client gặp giá trị lạ (phiên bản sau thêm) thì xử lý như `khac`."
+      },
+      "MealImageAttribution": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "provider",
+          "photographer_name",
+          "photographer_url",
+          "source_url"
+        ],
+        "description": "Thông tin ghi nguồn bắt buộc theo điều khoản của kho ảnh. Client hiển thị \"Ảnh: <photographer_name> / Pexels\" trên hoặc ngay dưới ảnh.",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": [
+              "pexels"
+            ],
+            "description": "Kho ảnh nguồn."
+          },
+          "photographer_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "photographer_url": {
+            "type": "string",
+            "format": "uri",
+            "maxLength": 500,
+            "description": "Trang tác giả trên kho ảnh. Client chỉ mở bằng trình duyệt ngoài; không tải ảnh từ đây."
+          },
+          "source_url": {
+            "type": "string",
+            "format": "uri",
+            "maxLength": 500,
+            "description": "Trang ảnh gốc trên kho ảnh. Client chỉ mở bằng trình duyệt ngoài; không tải ảnh từ đây."
+          }
+        }
+      },
+      "MealImageStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "ready",
+          "failed"
+        ],
+        "description": "`pending`: đang tìm hoặc tải ảnh; `ready`: tải được qua `url`; `failed`: không có ảnh (không tìm thấy, lỗi kho ảnh, file không hợp lệ, hoặc quá 2 phút chưa xong). `pending` và `failed` thì client hiện ảnh giữ chỗ / ảnh mặc định."
+      },
+      "MealImage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "image_id",
+          "status",
+          "url",
+          "attribution"
+        ],
+        "description": "Ảnh **minh họa** của món, tìm trong kho ảnh có giấy phép theo mô tả món do AI sinh, lưu ở kho lưu trữ của hệ thống. Ảnh dùng chung giữa mọi người dùng, có thể khác món thực tế; client luôn hiện nhãn \"Ảnh minh họa\". Ảnh không mang ý nghĩa an toàn.\n\nRàng buộc: `status` = `ready` ⇔ `url` và `attribution` khác `null`. `url` là đường dẫn tương đối tới `GET /meal-images/{image_id}` trên chính Backend API; client gọi kèm bearer token, không bao giờ gọi thẳng kho lưu trữ hay kho ảnh.",
+        "properties": {
+          "image_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "description": "Id ảnh, dùng cho `GET /meal-images` (đọc trạng thái) và `GET /meal-images/{image_id}`."
+          },
+          "status": {
+            "$ref": "#/components/schemas/MealImageStatus"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Ví dụ `/meal-images/42`. `null` khi chưa `ready`."
+          },
+          "attribution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MealImageAttribution"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "if": {
+          "properties": {
+            "status": {
+              "const": "ready"
+            }
+          }
+        },
+        "then": {
+          "properties": {
+            "url": {
+              "type": "string"
+            },
+            "attribution": {
+              "$ref": "#/components/schemas/MealImageAttribution"
+            }
+          }
+        },
+        "else": {
+          "properties": {
+            "url": {
+              "type": "null"
+            },
+            "attribution": {
+              "type": "null"
+            }
+          }
+        }
+      },
+      "MealImageStatusList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "$ref": "#/components/schemas/MealImage"
+            },
+            "description": "Trạng thái hiện tại của các ảnh được hỏi và còn tồn tại, theo thứ tự `ids` trong query. Id không tồn tại bị bỏ qua (không lỗi)."
+          }
+        }
       }
     },
     "responses": {
@@ -14261,6 +15538,61 @@
             },
             "example": {
               "detail": "Internal server error"
+            }
+          }
+        }
+      },
+      "MealSuggestionForbidden": {
+        "description": "Không có quyền; AI không được gọi, không có gì được lưu. `detail`:\n- `consent_revoked`: người bệnh chưa có (hoặc đã rút) consent `ai_meal`. Client mời người dùng đồng ý rồi gọi `POST /consents` với `purpose = ai_meal`; request kế tiếp sau khi đồng ý sẽ được phép.\n- `khong_co_quyen`: người gọi không phải chính người bệnh (kể cả người thân có liên kết và **admin**), hoặc người bệnh đang có yêu cầu xóa tài khoản chờ xử lý, hoặc `patient_id` không ứng với tài khoản nào.\n\nMọi lần từ chối được ghi `denied` vào nhật ký truy cập, trừ khi `patient_id` không tồn tại.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "examples": {
+              "no_access": {
+                "value": {
+                  "detail": "khong_co_quyen"
+                }
+              },
+              "consent_revoked": {
+                "value": {
+                  "detail": "consent_revoked"
+                }
+              }
+            }
+          }
+        }
+      },
+      "MealRefreshLimited": {
+        "description": "Tài khoản đã dùng hết 2 lần \"Gợi ý khác\" trong ngày (giờ `Asia/Ho_Chi_Minh`). AI không được gọi, không có gì được lưu. Chỉ áp cho request có `previous_suggestion_id`; request gợi ý đầu (không có field này) không bị giới hạn này. Luôn có header `Retry-After` tính tới 00:00 hôm sau. Client tắt nút \"Gợi ý khác\" và vẫn hiển thị gợi ý đang có.",
+        "headers": {
+          "Retry-After": {
+            "description": "Số giây còn lại tới 00:00 hôm sau giờ `Asia/Ho_Chi_Minh` (số nguyên dương).",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "Cache-Control": {
+            "description": "Không lưu phản hồi vào cache.",
+            "schema": {
+              "type": "string",
+              "const": "no-store"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "examples": {
+              "refresh_limit_reached": {
+                "value": {
+                  "detail": "refresh_limit_reached"
+                }
+              }
             }
           }
         }
