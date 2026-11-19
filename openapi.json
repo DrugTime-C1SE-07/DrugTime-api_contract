@@ -7306,6 +7306,264 @@
         }
       }
     },
+    "/allergens": {
+      "get": {
+        "tags": [
+          "catalog"
+        ],
+        "operationId": "listAllergens",
+        "summary": "Read shared allergen catalog",
+        "description": "Bearer authentication required. Returns every active entry of the curated allergen catalog in one response. It contains no patient records and does not require health_data consent. No query parameters. Order: drug entries before food entries, then by catalog display order, then by id; the order is stable between calls. IDs are stable and never reused. An entry retired from the catalog is omitted here, but stays readable in a patient's snapshot through allergies.catalog_items of GET /profile/health-setup.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllergenCatalogResponse"
+                },
+                "example": {
+                  "items": [
+                    {
+                      "id": "penicillin",
+                      "category": "drug",
+                      "name": "Penicillin (Amoxicillin, Ampicillin…)"
+                    },
+                    {
+                      "id": "seafood",
+                      "category": "food",
+                      "name": "Hải sản (tôm, cua, sò, mực…)"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/ProfileUnauthorized"
+          },
+          "422": {
+            "$ref": "#/components/responses/HealthSetupValidationError"
+          },
+          "500": {
+            "description": "Internal error. No internal exception details are returned.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "internal_error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profile/health-setup": {
+      "get": {
+        "tags": [
+          "profile"
+        ],
+        "operationId": "getOwnHealthSetup",
+        "summary": "Read own health onboarding selections",
+        "description": "Patient self only, using the authenticated app identity. Current health_data consent and Scope.HEALTH_PROFILE authorization are checked against the database at every request via PEP. Admin and caregiver-role callers are denied even with a caregiver link; a linked patient account acting for itself accesses only its own record. Audit allowed and denied attempts with minimal metadata; persist denied audit independently. Fail closed if durable audit fails, without returning medical data or committing a write. Never log request or response medical payloads. Success has Cache-Control: no-store. No query parameters. A cross-patient selector is rejected with 403 khong_co_quyen and audited; any other query parameter, including an owner selector equal to the caller, returns 422. Successful reads return both steps and a consistent revision. unreported means there is no record of a declaration; none_known is an explicit declaration. Existing condition links are reflected in reported even for accounts predating onboarding. allergies.catalog_items carries the id, category and name of every stored allergen ID, including entries retired from GET /allergens; use GET /conditions for condition labels. IDs sort ascending (ASCII for strings), and custom_names sort by Unicode code point in the stored form.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthSetupResponse"
+                },
+                "examples": {
+                  "unreported": {
+                    "value": {
+                      "revision": "v1",
+                      "allergies": {
+                        "status": "unreported"
+                      },
+                      "conditions": {
+                        "status": "unreported"
+                      }
+                    }
+                  },
+                  "saved": {
+                    "value": {
+                      "revision": "v2",
+                      "allergies": {
+                        "status": "reported",
+                        "catalog_ids": [
+                          "penicillin",
+                          "seafood"
+                        ],
+                        "catalog_items": [
+                          {
+                            "id": "penicillin",
+                            "category": "drug",
+                            "name": "Penicillin (Amoxicillin, Ampicillin…)"
+                          },
+                          {
+                            "id": "seafood",
+                            "category": "food",
+                            "name": "Hải sản (tôm, cua, sò, mực…)"
+                          }
+                        ],
+                        "custom_names": []
+                      },
+                      "conditions": {
+                        "status": "none_known"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/ProfileUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ProfileForbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/HealthSetupValidationError"
+          },
+          "500": {
+            "$ref": "#/components/responses/ProfileInternalError"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "profile"
+        ],
+        "operationId": "replaceOwnHealthSetupSteps",
+        "summary": "Save health onboarding steps atomically",
+        "description": "Patient self only, using the authenticated app identity. Current health_data consent and Scope.HEALTH_PROFILE authorization are checked against the database at every request via PEP. Admin and caregiver-role callers are denied even with a caregiver link; a linked patient account acting for itself accesses only its own record. Audit allowed and denied attempts with minimal metadata; persist denied audit independently. Fail closed if durable audit fails, without returning medical data or committing a write. Never log request or response medical payloads. Success has Cache-Control: no-store. No query parameters. A cross-patient selector is rejected with 403 khong_co_quyen and audited; any other query parameter, including an owner selector equal to the caller, returns 422. Supply the latest revision and at least one step. Replace the complete selection of each supplied step; omit a skipped or unchanged step to preserve it. Reject null. none_known clears selections in that step and records the explicit declaration. reported requires at least one catalog or custom entry. Conditions selected by ID share the same links as /profile/conditions: preserve IDs and subtype/stage of retained links, remove links no longer selected, create new links with null metadata. Custom condition names are returned here; legacy /profile conditions retains its existing shape and lists only catalog links. Serialize all changes affecting this snapshot, including writes via legacy condition endpoints, and apply the two supplied steps in one transaction. Adding a legacy catalog link makes conditions reported; deleting the last item leaves conditions unreported if no custom names remain. Custom allergy names are at most 40 characters and custom condition names at most 120 (longer values fail schema validation with 422 before any write). Trim custom names, normalize to NFC and reject empty names, NUL and duplicates under Unicode casefold after normalization. Allergen IDs must be active in GET /allergens, except IDs already stored in the current snapshot, which may be resubmitted after retirement; any other unknown or retired allergen ID returns 422 allergen_not_found. Condition IDs must exist. If a revision is stale, return 409 without mutation. A write with the current revision and identical normalized selection returns the current snapshot without duplicating records or advancing the revision. After an uncertain result or 409, re-read: if supplied steps already match, consider them saved; otherwise review current values before retrying with a new revision. No offline write queue.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthSetupResponse"
+                },
+                "example": {
+                  "revision": "v2",
+                  "allergies": {
+                    "status": "reported",
+                    "catalog_ids": [
+                      "penicillin",
+                      "seafood"
+                    ],
+                    "catalog_items": [
+                      {
+                        "id": "penicillin",
+                        "category": "drug",
+                        "name": "Penicillin (Amoxicillin, Ampicillin…)"
+                      },
+                      {
+                        "id": "seafood",
+                        "category": "food",
+                        "name": "Hải sản (tôm, cua, sò, mực…)"
+                      }
+                    ],
+                    "custom_names": []
+                  },
+                  "conditions": {
+                    "status": "none_known"
+                  }
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/ProfileUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ProfileForbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/HealthSetupValidationError"
+          },
+          "500": {
+            "$ref": "#/components/responses/ProfileInternalError"
+          },
+          "409": {
+            "description": "Revision is stale. Re-read before attempting any further write.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "example": {
+                  "detail": "health_setup_revision_conflict"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HealthSetupUpdateRequest"
+              },
+              "example": {
+                "revision": "v1",
+                "allergies": {
+                  "status": "reported",
+                  "catalog_ids": [
+                    "penicillin",
+                    "seafood"
+                  ],
+                  "custom_names": []
+                },
+                "conditions": {
+                  "status": "none_known"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/conditions": {
       "get": {
         "tags": [
@@ -13491,6 +13749,407 @@
           }
         }
       },
+      "AllergenCatalogItem": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "category",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,63}$"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "drug",
+              "food"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "AllergenCatalogResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AllergenCatalogItem"
+            }
+          }
+        }
+      },
+      "HealthSetupCustomName": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 120,
+        "pattern": "^[^\\u0000]+$"
+      },
+      "HealthSetupAllergyName": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 40,
+        "pattern": "^[^\\u0000]+$",
+        "description": "Custom allergy name. At most 40 characters, the per-item limit of the meal-suggestion allergy declaration, so every saved allergy can be sent there unchanged."
+      },
+      "HealthSetupAllergies": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "const": "unreported"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "const": "none_known"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "status",
+              "catalog_ids",
+              "catalog_items",
+              "custom_names"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "const": "reported"
+              },
+              "catalog_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]{0,63}$"
+                },
+                "uniqueItems": true
+              },
+              "catalog_items": {
+                "type": "array",
+                "description": "Catalog label for each entry of catalog_ids, in the same order, including entries since retired from GET /allergens.",
+                "items": {
+                  "$ref": "#/components/schemas/AllergenCatalogItem"
+                },
+                "uniqueItems": true
+              },
+              "custom_names": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/HealthSetupAllergyName"
+                },
+                "maxItems": 30,
+                "uniqueItems": true
+              }
+            },
+            "anyOf": [
+              {
+                "properties": {
+                  "catalog_ids": {
+                    "minItems": 1
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "custom_names": {
+                    "minItems": 1
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "HealthSetupConditions": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "const": "unreported"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "const": "none_known"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "status",
+              "catalog_ids",
+              "custom_names"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "const": "reported"
+              },
+              "catalog_ids": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "uniqueItems": true
+              },
+              "custom_names": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/HealthSetupCustomName"
+                },
+                "maxItems": 30,
+                "uniqueItems": true
+              }
+            },
+            "anyOf": [
+              {
+                "properties": {
+                  "catalog_ids": {
+                    "minItems": 1
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "custom_names": {
+                    "minItems": 1
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "HealthSetupAllergiesUpdate": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "const": "none_known"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "status",
+              "catalog_ids",
+              "custom_names"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "const": "reported"
+              },
+              "catalog_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]{0,63}$"
+                },
+                "uniqueItems": true
+              },
+              "custom_names": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/HealthSetupAllergyName"
+                },
+                "maxItems": 30,
+                "uniqueItems": true
+              }
+            },
+            "anyOf": [
+              {
+                "properties": {
+                  "catalog_ids": {
+                    "minItems": 1
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "custom_names": {
+                    "minItems": 1
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "HealthSetupConditionsUpdate": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "const": "none_known"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "status",
+              "catalog_ids",
+              "custom_names"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "const": "reported"
+              },
+              "catalog_ids": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "uniqueItems": true
+              },
+              "custom_names": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/HealthSetupCustomName"
+                },
+                "maxItems": 30,
+                "uniqueItems": true
+              }
+            },
+            "anyOf": [
+              {
+                "properties": {
+                  "catalog_ids": {
+                    "minItems": 1
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "custom_names": {
+                    "minItems": 1
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "HealthSetupResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "revision",
+          "allergies",
+          "conditions"
+        ],
+        "properties": {
+          "revision": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Opaque per-patient version for both steps. Changes when either step or an existing condition link changes. Clients only echo or compare it."
+          },
+          "allergies": {
+            "$ref": "#/components/schemas/HealthSetupAllergies"
+          },
+          "conditions": {
+            "$ref": "#/components/schemas/HealthSetupConditions"
+          }
+        }
+      },
+      "HealthSetupUpdateRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "revision"
+        ],
+        "properties": {
+          "revision": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Opaque per-patient version for both steps. Changes when either step or an existing condition link changes. Clients only echo or compare it."
+          },
+          "allergies": {
+            "$ref": "#/components/schemas/HealthSetupAllergiesUpdate"
+          },
+          "conditions": {
+            "$ref": "#/components/schemas/HealthSetupConditionsUpdate"
+          }
+        },
+        "anyOf": [
+          {
+            "required": [
+              "allergies"
+            ]
+          },
+          {
+            "required": [
+              "conditions"
+            ]
+          }
+        ]
+      },
       "ConditionResponse": {
         "type": "object",
         "additionalProperties": false,
@@ -14396,6 +15055,52 @@
           }
         }
       },
+      "AllergyDeclaration": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "none",
+          "items"
+        ],
+        "description": "Khai báo bắt buộc (QD-40) cho dị ứng hoặc hạn chế ăn uống. Chỉ có hai dạng hợp lệ:\n- `none` = `true` và `items` rỗng: người dùng xác nhận **không có**.\n- `none` = `false` và `items` có 1–45 mục.\n\nKhông có trạng thái \"chưa biết\": client chưa hỏi được người dùng thì không gọi endpoint. Mọi dạng khác trả 422 `ValidationError`.\n\nDùng cho dị ứng: tối đa 45 mục để gửi đủ mọi dị ứng trong hồ sơ (15 mục danh mục + 30 tên tự nhập), mỗi mục ≤40 ký tự. Client không được bỏ bớt dị ứng.",
+        "properties": {
+          "none": {
+            "type": "boolean"
+          },
+          "items": {
+            "type": "array",
+            "maxItems": 45,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            },
+            "description": "Tên tự do, ví dụ \"Tôm\", \"Hải sản\", \"Ăn chay\". Backend trim khoảng trắng."
+          }
+        },
+        "if": {
+          "properties": {
+            "none": {
+              "const": true
+            }
+          }
+        },
+        "then": {
+          "properties": {
+            "items": {
+              "maxItems": 0
+            }
+          }
+        },
+        "else": {
+          "properties": {
+            "items": {
+              "minItems": 1
+            }
+          }
+        }
+      },
       "MealSuggestionRequest": {
         "type": "object",
         "additionalProperties": false,
@@ -14410,7 +15115,7 @@
             "$ref": "#/components/schemas/MealType"
           },
           "allergies": {
-            "$ref": "#/components/schemas/DietaryDeclaration",
+            "$ref": "#/components/schemas/AllergyDeclaration",
             "description": "Dị ứng thực phẩm."
           },
           "dietary_restrictions": {
@@ -15417,6 +16122,49 @@
               "cooldown": {
                 "value": {
                   "detail": "link_request_cooldown"
+                }
+              }
+            }
+          }
+        }
+      },
+      "HealthSetupValidationError": {
+        "description": "Invalid shape/query uses the FastAPI field-error array. Business validation uses stable string codes: allergen_not_found, condition_not_found, invalid_custom_name, duplicate_custom_name. HTTP 422 leaves both steps unchanged.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                {
+                  "$ref": "#/components/schemas/ValidationError"
+                }
+              ]
+            },
+            "examples": {
+              "unknown_allergen": {
+                "value": {
+                  "detail": "allergen_not_found"
+                }
+              },
+              "duplicate_name": {
+                "value": {
+                  "detail": "duplicate_custom_name"
+                }
+              },
+              "missing_revision": {
+                "value": {
+                  "detail": [
+                    {
+                      "loc": [
+                        "body",
+                        "revision"
+                      ],
+                      "msg": "Field required",
+                      "type": "missing"
+                    }
+                  ]
                 }
               }
             }
