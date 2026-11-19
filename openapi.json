@@ -7097,7 +7097,8 @@
                           "condition_id": 3,
                           "condition_name": "Diabetes mellitus",
                           "subtype": null,
-                          "stage": null
+                          "stage": null,
+                          "category": "chronic_disease"
                         }
                       ],
                       "phone_number": "+84912345678"
@@ -7373,7 +7374,7 @@
         ],
         "operationId": "getOwnHealthSetup",
         "summary": "Read own health onboarding selections",
-        "description": "Patient self only, using the authenticated app identity. Current health_data consent and Scope.HEALTH_PROFILE authorization are checked against the database at every request via PEP. Admin and caregiver-role callers are denied even with a caregiver link; a linked patient account acting for itself accesses only its own record. Audit allowed and denied attempts with minimal metadata; persist denied audit independently. Fail closed if durable audit fails, without returning medical data or committing a write. Never log request or response medical payloads. Success has Cache-Control: no-store. No query parameters. A cross-patient selector is rejected with 403 khong_co_quyen and audited; any other query parameter, including an owner selector equal to the caller, returns 422. Successful reads return both steps and a consistent revision. unreported means there is no record of a declaration; none_known is an explicit declaration. Existing condition links are reflected in reported even for accounts predating onboarding. allergies.catalog_items carries the id, category and name of every stored allergen ID, including entries retired from GET /allergens; use GET /conditions for condition labels. IDs sort ascending (ASCII for strings), and custom_names sort by Unicode code point in the stored form.",
+        "description": "Patient self only, using the authenticated app identity. Current health_data consent and Scope.HEALTH_PROFILE authorization are checked against the database at every request via PEP. Admin and caregiver-role callers are denied even with a caregiver link; a linked patient account acting for itself accesses only its own record. Audit allowed and denied attempts with minimal metadata; persist denied audit independently. Fail closed if durable audit fails, without returning medical data or committing a write. Never log request or response medical payloads. Success has Cache-Control: no-store. No query parameters. A cross-patient selector is rejected with 403 khong_co_quyen and audited; any other query parameter, including an owner selector equal to the caller, returns 422. Successful reads return all three steps (allergies, conditions, physiological_states) and a consistent revision. unreported means there is no record of a declaration; none_known is an explicit declaration. Existing condition links are reflected in reported even for accounts predating onboarding. allergies.catalog_items carries the id, category and name of every stored allergen ID, including entries retired from GET /allergens; use GET /conditions for condition labels. IDs sort ascending (ASCII for strings), and custom_names sort by Unicode code point in the stored form. conditions reflects only links whose catalog category is chronic_disease (plus custom names); physiological_states reflects only links whose category is physiological_state. An account with a physiological link and no explicit declaration reports physiological_states as reported; with neither, unreported. The server does not hide the physiological step by gender; clients decide visibility.",
         "security": [
           {
             "bearerAuth": []
@@ -7395,6 +7396,9 @@
                         "status": "unreported"
                       },
                       "conditions": {
+                        "status": "unreported"
+                      },
+                      "physiological_states": {
                         "status": "unreported"
                       }
                     }
@@ -7424,6 +7428,12 @@
                       },
                       "conditions": {
                         "status": "none_known"
+                      },
+                      "physiological_states": {
+                        "status": "reported",
+                        "catalog_ids": [
+                          3
+                        ]
                       }
                     }
                   }
@@ -7460,7 +7470,7 @@
         ],
         "operationId": "replaceOwnHealthSetupSteps",
         "summary": "Save health onboarding steps atomically",
-        "description": "Patient self only, using the authenticated app identity. Current health_data consent and Scope.HEALTH_PROFILE authorization are checked against the database at every request via PEP. Admin and caregiver-role callers are denied even with a caregiver link; a linked patient account acting for itself accesses only its own record. Audit allowed and denied attempts with minimal metadata; persist denied audit independently. Fail closed if durable audit fails, without returning medical data or committing a write. Never log request or response medical payloads. Success has Cache-Control: no-store. No query parameters. A cross-patient selector is rejected with 403 khong_co_quyen and audited; any other query parameter, including an owner selector equal to the caller, returns 422. Supply the latest revision and at least one step. Replace the complete selection of each supplied step; omit a skipped or unchanged step to preserve it. Reject null. none_known clears selections in that step and records the explicit declaration. reported requires at least one catalog or custom entry. Conditions selected by ID share the same links as /profile/conditions: preserve IDs and subtype/stage of retained links, remove links no longer selected, create new links with null metadata. Custom condition names are returned here; legacy /profile conditions retains its existing shape and lists only catalog links. Serialize all changes affecting this snapshot, including writes via legacy condition endpoints, and apply the two supplied steps in one transaction. Adding a legacy catalog link makes conditions reported; deleting the last item leaves conditions unreported if no custom names remain. Custom allergy names are at most 40 characters and custom condition names at most 120 (longer values fail schema validation with 422 before any write). Trim custom names, normalize to NFC and reject empty names, NUL and duplicates under Unicode casefold after normalization. Allergen IDs must be active in GET /allergens, except IDs already stored in the current snapshot, which may be resubmitted after retirement; any other unknown or retired allergen ID returns 422 allergen_not_found. Condition IDs must exist. If a revision is stale, return 409 without mutation. A write with the current revision and identical normalized selection returns the current snapshot without duplicating records or advancing the revision. After an uncertain result or 409, re-read: if supplied steps already match, consider them saved; otherwise review current values before retrying with a new revision. No offline write queue.",
+        "description": "Patient self only, using the authenticated app identity. Current health_data consent and Scope.HEALTH_PROFILE authorization are checked against the database at every request via PEP. Admin and caregiver-role callers are denied even with a caregiver link; a linked patient account acting for itself accesses only its own record. Audit allowed and denied attempts with minimal metadata; persist denied audit independently. Fail closed if durable audit fails, without returning medical data or committing a write. Never log request or response medical payloads. Success has Cache-Control: no-store. No query parameters. A cross-patient selector is rejected with 403 khong_co_quyen and audited; any other query parameter, including an owner selector equal to the caller, returns 422. Supply the latest revision and at least one step. Replace the complete selection of each supplied step; omit a skipped or unchanged step to preserve it. Reject null. none_known clears selections in that step and records the explicit declaration. reported requires at least one catalog or custom entry. Conditions selected by ID share the same links as /profile/conditions: preserve IDs and subtype/stage of retained links, remove links no longer selected, create new links with null metadata. Custom condition names are returned here; legacy /profile conditions retains its existing shape and lists only catalog links. Serialize all changes affecting this snapshot, including writes via legacy condition endpoints, and apply all supplied steps in one transaction. Adding a legacy catalog link makes conditions reported; deleting the last item leaves conditions unreported if no custom names remain. Custom allergy names are at most 40 characters and custom condition names at most 120 (longer values fail schema validation with 422 before any write). Trim custom names, normalize to NFC and reject empty names, NUL and duplicates under Unicode casefold after normalization. Allergen IDs must be active in GET /allergens, except IDs already stored in the current snapshot, which may be resubmitted after retirement; any other unknown or retired allergen ID returns 422 allergen_not_found. Condition IDs must exist. If a revision is stale, return 409 without mutation. A write with the current revision and identical normalized selection returns the current snapshot without duplicating records or advancing the revision. After an uncertain result or 409, re-read: if supplied steps already match, consider them saved; otherwise review current values before retrying with a new revision. No offline write queue. Physiological states: conditions.catalog_ids must reference category chronic_disease and physiological_states.catalog_ids must reference category physiological_state; a mismatch returns 422 condition_category_mismatch without mutation. none_known on one of these steps removes only that step's links and never changes the other step's declaration. Adding or removing a physiological_state link (including via legacy /profile/conditions) updates physiological_states only and never clears conditions none_known; adding a chronic_disease link clears conditions none_known as before. Deleting the last physiological link leaves physiological_states unreported.",
         "security": [
           {
             "bearerAuth": []
@@ -7557,6 +7567,9 @@
                 },
                 "conditions": {
                   "status": "none_known"
+                },
+                "physiological_states": {
+                  "status": "none_known"
                 }
               }
             }
@@ -7571,7 +7584,7 @@
         ],
         "operationId": "listConditions",
         "summary": "List selectable conditions",
-        "description": "Authenticated catalog lookup, not patient health data: no health_data consent or HEALTH_PROFILE authorization is required. Return no patient identifiers or patient-condition links. Ordered by condition id ASC. Offset pagination follows the existing catalog contract; it is not a snapshot if catalog data changes. No search/filter query is introduced in this task.",
+        "description": "Authenticated catalog lookup, not patient health data: no health_data consent or HEALTH_PROFILE authorization is required. Return no patient identifiers or patient-condition links. Ordered by condition id ASC. Offset pagination follows the existing catalog contract; it is not a snapshot if catalog data changes. No search/filter query is introduced in this task. Each item carries category so clients can separate chronic diseases from physiological states.",
         "security": [
           {
             "bearerAuth": []
@@ -7613,11 +7626,17 @@
                     "value": {
                       "items": [
                         {
+                          "id": 2,
+                          "name": "Đái tháo đường type 2",
+                          "category": "chronic_disease"
+                        },
+                        {
                           "id": 3,
-                          "name": "Diabetes mellitus"
+                          "name": "Đang mang thai",
+                          "category": "physiological_state"
                         }
                       ],
-                      "total": 1,
+                      "total": 2,
                       "limit": 20,
                       "offset": 0
                     }
@@ -7695,7 +7714,8 @@
                   "condition_id": 3,
                   "condition_name": "Diabetes mellitus",
                   "subtype": null,
-                  "stage": null
+                  "stage": null,
+                  "category": "chronic_disease"
                 }
               }
             }
@@ -7798,7 +7818,8 @@
                   "condition_id": 3,
                   "condition_name": "Diabetes mellitus",
                   "subtype": "Type 2",
-                  "stage": null
+                  "stage": null,
+                  "category": "chronic_disease"
                 }
               }
             }
@@ -13964,7 +13985,8 @@
               }
             ]
           }
-        ]
+        ],
+        "description": "Chronic-disease step (bệnh nền). catalog_ids accept only conditions with category chronic_disease; custom_names are chronic diseases. none_known covers chronic diseases only and is unaffected by physiological states."
       },
       "HealthSetupAllergiesUpdate": {
         "oneOf": [
@@ -14092,7 +14114,8 @@
               }
             ]
           }
-        ]
+        ],
+        "description": "Chronic-disease step (bệnh nền). catalog_ids accept only conditions with category chronic_disease; custom_names are chronic diseases. none_known covers chronic diseases only and is unaffected by physiological states."
       },
       "HealthSetupResponse": {
         "type": "object",
@@ -14100,20 +14123,24 @@
         "required": [
           "revision",
           "allergies",
-          "conditions"
+          "conditions",
+          "physiological_states"
         ],
         "properties": {
           "revision": {
             "type": "string",
             "minLength": 1,
             "maxLength": 128,
-            "description": "Opaque per-patient version for both steps. Changes when either step or an existing condition link changes. Clients only echo or compare it."
+            "description": "Opaque per-patient version for all steps. Changes when any step or an existing condition link changes. Clients only echo or compare it."
           },
           "allergies": {
             "$ref": "#/components/schemas/HealthSetupAllergies"
           },
           "conditions": {
             "$ref": "#/components/schemas/HealthSetupConditions"
+          },
+          "physiological_states": {
+            "$ref": "#/components/schemas/HealthSetupPhysiologicalStates"
           }
         }
       },
@@ -14128,13 +14155,16 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 128,
-            "description": "Opaque per-patient version for both steps. Changes when either step or an existing condition link changes. Clients only echo or compare it."
+            "description": "Opaque per-patient version for all steps. Changes when any step or an existing condition link changes. Clients only echo or compare it."
           },
           "allergies": {
             "$ref": "#/components/schemas/HealthSetupAllergiesUpdate"
           },
           "conditions": {
             "$ref": "#/components/schemas/HealthSetupConditionsUpdate"
+          },
+          "physiological_states": {
+            "$ref": "#/components/schemas/HealthSetupPhysiologicalStatesUpdate"
           }
         },
         "anyOf": [
@@ -14147,6 +14177,11 @@
             "required": [
               "conditions"
             ]
+          },
+          {
+            "required": [
+              "physiological_states"
+            ]
           }
         ]
       },
@@ -14155,7 +14190,8 @@
         "additionalProperties": false,
         "required": [
           "id",
-          "name"
+          "name",
+          "category"
         ],
         "properties": {
           "id": {
@@ -14166,6 +14202,9 @@
           },
           "name": {
             "type": "string"
+          },
+          "category": {
+            "$ref": "#/components/schemas/ConditionCategory"
           }
         }
       },
@@ -14262,7 +14301,8 @@
           "condition_id",
           "condition_name",
           "subtype",
-          "stage"
+          "stage",
+          "category"
         ],
         "properties": {
           "id": {
@@ -14293,6 +14333,9 @@
               "string",
               "null"
             ]
+          },
+          "category": {
+            "$ref": "#/components/schemas/ConditionCategory"
           }
         }
       },
@@ -15519,6 +15562,110 @@
             "description": "Trạng thái hiện tại của các ảnh được hỏi và còn tồn tại, theo thứ tự `ids` trong query. Id không tồn tại bị bỏ qua (không lỗi)."
           }
         }
+      },
+      "ConditionCategory": {
+        "type": "string",
+        "enum": [
+          "chronic_disease",
+          "physiological_state"
+        ],
+        "description": "Catalog classification from conditions.medical_nature: benh_ly -> chronic_disease (bệnh nền), sinh_ly_binh_thuong -> physiological_state (tình trạng sinh lý, e.g. pregnancy, breastfeeding). Physiological states are not chronic diseases and must not be shown or counted as such."
+      },
+      "HealthSetupPhysiologicalStates": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "const": "unreported"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "const": "none_known"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "status",
+              "catalog_ids"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "const": "reported"
+              },
+              "catalog_ids": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "uniqueItems": true,
+                "minItems": 1,
+                "description": "IDs from GET /conditions with category physiological_state."
+              }
+            }
+          }
+        ],
+        "description": "Physiological-state step (tình trạng sinh lý). Catalog-only, no custom names. unreported = no record; none_known = explicit 'none of these'; reported = at least one physiological_state condition."
+      },
+      "HealthSetupPhysiologicalStatesUpdate": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "const": "none_known"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "status",
+              "catalog_ids"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "const": "reported"
+              },
+              "catalog_ids": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "uniqueItems": true,
+                "minItems": 1
+              }
+            }
+          }
+        ],
+        "description": "Replace the physiological-state step. none_known removes all physiological_state links; reported replaces them with catalog_ids (category physiological_state only)."
       }
     },
     "responses": {
@@ -16129,7 +16276,7 @@
         }
       },
       "HealthSetupValidationError": {
-        "description": "Invalid shape/query uses the FastAPI field-error array. Business validation uses stable string codes: allergen_not_found, condition_not_found, invalid_custom_name, duplicate_custom_name. HTTP 422 leaves both steps unchanged.",
+        "description": "Invalid shape/query uses the FastAPI field-error array. Business validation uses stable string codes: allergen_not_found, condition_not_found, invalid_custom_name, duplicate_custom_name, condition_category_mismatch. HTTP 422 leaves all steps unchanged.",
         "content": {
           "application/json": {
             "schema": {
@@ -16165,6 +16312,11 @@
                       "type": "missing"
                     }
                   ]
+                }
+              },
+              "category_mismatch": {
+                "value": {
+                  "detail": "condition_category_mismatch"
                 }
               }
             }
