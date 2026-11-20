@@ -552,7 +552,9 @@
                           "has_interaction_data": false,
                           "status": "active",
                           "ended_at": null,
-                          "schedules": []
+                          "schedules": [],
+                          "pill_shape": null,
+                          "pill_color": null
                         },
                         {
                           "id": 42,
@@ -602,7 +604,9 @@
                               "reminder_enabled": true,
                               "effective_from": "2026-10-01T09:15:02+07:00"
                             }
-                          ]
+                          ],
+                          "pill_shape": null,
+                          "pill_color": null
                         },
                         {
                           "id": 40,
@@ -621,7 +625,9 @@
                           "has_interaction_data": false,
                           "status": "stopped",
                           "ended_at": "2026-09-28T19:00:00+07:00",
-                          "schedules": []
+                          "schedules": [],
+                          "pill_shape": null,
+                          "pill_color": null
                         }
                       ]
                     }
@@ -650,7 +656,7 @@
         ],
         "operationId": "createUserMedication",
         "summary": "Thêm một thuốc vào danh sách của chính người gọi",
-        "description": "Tạo thuốc cho **chính người gọi** (không nhận `patient_id`). Thuốc phải chọn từ danh mục (`medication_id`). Mọi bản ghi được tạo trong một transaction.\n\n- `dosing_mode = scheduled`: bắt buộc `intake_times`; mỗi giờ tạo một lịch (`effective_from` = thời điểm request). `doses_per_day` = số giờ.\n- `dosing_mode = as_needed`: bắt buộc `max_doses_per_day`; không tạo lịch, không có nhắc và không bao giờ bị đánh dấu bỏ lỡ. `doses_per_day` = `max_doses_per_day`.\n\n**Idempotent theo `client_uuid`**: client sinh một `client_uuid` cho mỗi lần người dùng bấm lưu và dùng lại đúng giá trị đó khi gửi lại (mất mạng, hết thời gian chờ). Lần tạo đầu trả 201. Gửi lại cùng `client_uuid` của cùng người dùng trả 200 kèm thuốc đã tạo lần đầu, không tạo bản ghi mới; body của lần gửi sau bị bỏ qua, kể cả khi khác lần đầu. Hai request trùng gửi song song chỉ tạo một thuốc. `client_uuid` chỉ có nghĩa trong phạm vi một người dùng.\n\nThêm một thuốc đang có trong danh sách với `client_uuid` mới vẫn được phép và tạo bản ghi mới.\n\nPhân quyền: chỉ người có consent `health_data` còn hiệu lực được ghi; thiếu consent trả 403 `consent_revoked`.\n\nGửi lại `client_uuid` của một thuốc **đã bị xoá** trả 404 `user_medication_not_found` và không tạo thuốc mới; client coi thao tác thêm đó đã kết thúc.",
+        "description": "Tạo thuốc cho **chính người gọi** (không nhận `patient_id`). Thuốc phải chọn từ danh mục (`medication_id`). Mọi bản ghi được tạo trong một transaction.\n\n`pill_shape`, `pill_color` là tùy chọn, chỉ để hiển thị (người bệnh chọn ở bước xác nhận); không gửi thì lưu `null`. Client cũ không gửi hai field này vẫn tạo thuốc bình thường.\n\n- `dosing_mode = scheduled`: bắt buộc `intake_times`; mỗi giờ tạo một lịch (`effective_from` = thời điểm request). `doses_per_day` = số giờ.\n- `dosing_mode = as_needed`: bắt buộc `max_doses_per_day`; không tạo lịch, không có nhắc và không bao giờ bị đánh dấu bỏ lỡ. `doses_per_day` = `max_doses_per_day`.\n\n**Idempotent theo `client_uuid`**: client sinh một `client_uuid` cho mỗi lần người dùng bấm lưu và dùng lại đúng giá trị đó khi gửi lại (mất mạng, hết thời gian chờ). Lần tạo đầu trả 201. Gửi lại cùng `client_uuid` của cùng người dùng trả 200 kèm thuốc đã tạo lần đầu, không tạo bản ghi mới; body của lần gửi sau bị bỏ qua, kể cả khi khác lần đầu. Hai request trùng gửi song song chỉ tạo một thuốc. `client_uuid` chỉ có nghĩa trong phạm vi một người dùng.\n\nThêm một thuốc đang có trong danh sách với `client_uuid` mới vẫn được phép và tạo bản ghi mới.\n\nPhân quyền: chỉ người có consent `health_data` còn hiệu lực được ghi; thiếu consent trả 403 `consent_revoked`.\n\nGửi lại `client_uuid` của một thuốc **đã bị xoá** trả 404 `user_medication_not_found` và không tạo thuốc mới; client coi thao tác thêm đó đã kết thúc.",
         "security": [
           {
             "bearerAuth": []
@@ -676,7 +682,9 @@
                       "20:00"
                     ],
                     "intake_timing": "after_meal",
-                    "stock_quantity": 30
+                    "stock_quantity": 30,
+                    "pill_shape": "round_tablet",
+                    "pill_color": "yellow"
                   }
                 },
                 "as_needed": {
@@ -760,7 +768,9 @@
                           "reminder_enabled": true,
                           "effective_from": "2026-10-01T09:15:02+07:00"
                         }
-                      ]
+                      ],
+                      "pill_shape": "round_tablet",
+                      "pill_color": "yellow"
                     }
                   },
                   "as_needed": {
@@ -781,7 +791,9 @@
                       "has_interaction_data": false,
                       "status": "active",
                       "ended_at": null,
-                      "schedules": []
+                      "schedules": [],
+                      "pill_shape": null,
+                      "pill_color": null
                     }
                   }
                 }
@@ -853,7 +865,9 @@
                           "reminder_enabled": true,
                           "effective_from": "2026-10-01T09:15:02+07:00"
                         }
-                      ]
+                      ],
+                      "pill_shape": null,
+                      "pill_color": null
                     }
                   }
                 }
@@ -959,7 +973,9 @@
                           "reminder_enabled": true,
                           "effective_from": "2026-10-01T09:15:02+07:00"
                         }
-                      ]
+                      ],
+                      "pill_shape": null,
+                      "pill_color": null
                     }
                   },
                   "stopped": {
@@ -980,7 +996,9 @@
                       "has_interaction_data": true,
                       "status": "stopped",
                       "ended_at": "2026-10-05T07:30:00+07:00",
-                      "schedules": []
+                      "schedules": [],
+                      "pill_shape": null,
+                      "pill_color": null
                     }
                   },
                   "as_needed": {
@@ -1001,7 +1019,9 @@
                       "has_interaction_data": false,
                       "status": "active",
                       "ended_at": null,
-                      "schedules": []
+                      "schedules": [],
+                      "pill_shape": null,
+                      "pill_color": null
                     }
                   }
                 }
@@ -1025,7 +1045,7 @@
         ],
         "operationId": "updateUserMedication",
         "summary": "Sửa, ngừng hoặc dùng lại một thuốc của chính người gọi",
-        "description": "Chỉ **chính người bệnh** được sửa. Người thân (dù xem được thuốc) và admin gọi endpoint này nhận 403 `khong_co_quyen` và được ghi nhật ký `denied`.\n\nGửi một hoặc nhiều field; field không gửi giữ nguyên. Quy tắc:\n\n| Muốn | Gửi | Kết quả |\n|---|---|---|\n| Đổi liều mỗi lần | `quantity_per_dose` | Lịch không đổi |\n| Đổi cách uống, tồn kho | `intake_timing`, `stock_quantity` (gửi `null` để xóa giá trị) | Lịch không đổi |\n| Đổi giờ hoặc số lần/ngày (thuốc đang `scheduled`) | `intake_times` (có thể kèm `days_of_week`) | Đóng mọi lịch đang mở, tạo lịch mới cho từng giờ, đóng và mở theo **mốc hiệu lực** của `POST /medications/{id}/schedules`; `days_of_week` = giá trị gửi kèm, không gửi thì giữ của lịch cũ. Giờ đã có trong lịch cũ giữ `reminder_enabled` cũ; giờ mới bật nhắc. `doses_per_day` = số giờ mới |\n| Đổi ngày uống trong tuần (thuốc đang `scheduled`) | `days_of_week` | Đóng mọi lịch đang mở, tạo lại lịch cùng giờ, cùng `reminder_enabled`, với ngày mới, đóng và mở theo **mốc hiệu lực** của `POST /medications/{id}/schedules`. Ngày gửi trùng ngày hiện tại: không đổi lịch |\n| Đổi số lần tối đa (thuốc đang `as_needed`) | `max_doses_per_day` | `doses_per_day` = giá trị mới |\n| Chuyển sang dùng khi cần | `dosing_mode: as_needed` + `max_doses_per_day` | Đóng mọi lịch đang mở theo **mốc hiệu lực** của `POST /medications/{id}/schedules` |\n| Chuyển sang uống theo giờ | `dosing_mode: scheduled` + `intake_times` (có thể kèm `days_of_week`) | Tạo lịch mới, bật nhắc; `days_of_week` = giá trị gửi kèm, không gửi thì cả tuần |\n| Ngừng thuốc | chỉ `stopped: true` | Thuốc kết thúc tại thời điểm request (`ended_at`); mọi lịch đang mở đóng theo **mốc hiệu lực** của `POST /medications/{id}/schedules` |\n| Dùng lại thuốc đã ngừng | chỉ `stopped: false` | `status` = `active`, `ended_at` = `null`. Thuốc `scheduled`: mở lại lịch mới theo **mốc hiệu lực** của `POST /medications/{id}/schedules`, mỗi lịch lấy `intake_time`, `days_of_week`, `reminder_enabled` của một lịch đã đóng cùng lúc với lần ngừng gần nhất. Thuốc `as_needed`: không tạo lịch. Các field khác (liều, cách uống, tồn kho, `doses_per_day`) giữ nguyên |\n\nLịch cũ chỉ bị đóng, không bị xóa. Mọi thao tác đóng hoặc mở lịch ở endpoint này (đổi giờ, đổi ngày, chuyển chế độ, ngừng, dùng lại) theo **mốc hiệu lực** của `POST /medications/{id}/schedules`: thường là thời điểm request; lịch có liều đã xác nhận sớm đóng ngay sau giờ dự kiến của liều đó, và lịch mới cùng giờ không bắt đầu trước mốc ấy (tối đa khoảng 30 phút). Vì vậy `ended_at` của lịch đóng lúc ngừng có thể muộn hơn `ended_at` của thuốc. Một giờ dự kiến không bao giờ thuộc hai lịch của cùng thuốc. Ngày uống trong tuần là chung cho mọi giờ của thuốc. Thêm, sửa, xoá hay bật/tắt nhắc **từng** giờ dùng `/medications/{id}/schedules`.\n\nTrả 422 `medication_rule_violation` khi: body rỗng; `intake_times` hoặc `days_of_week` gửi cho thuốc sẽ là `as_needed`, hoặc `max_doses_per_day` gửi cho thuốc sẽ là `scheduled`; đổi `dosing_mode` mà thiếu field bắt buộc của chế độ mới; `stopped` đi kèm field khác. Thuốc đã ngừng: gửi lại `stopped: true` trả 200 và không đổi gì; gửi `stopped: false` để dùng lại; gửi field khác trả 422 `medication_stopped` (muốn sửa thì dùng lại trước). Thuốc đang dùng: gửi `stopped: false` trả 200 và không đổi gì. Thuốc `scheduled` đã ngừng mà không tìm được lịch nào đóng cùng lúc với lần ngừng (dữ liệu cũ) trả 422 `medication_rule_violation`; client hướng dẫn người dùng thêm thuốc mới.\n\nThuốc đã bị xoá trả 404 `user_medication_not_found`.\n\nIdempotent theo nội dung: gửi lại cùng body cho cùng kết quả cuối, trừ `intake_times` (mỗi lần gửi tạo lại lịch với `effective_from` mới; vô hại với nhắc lịch nhưng client không nên tự gửi lại khi không cần).",
+        "description": "Chỉ **chính người bệnh** được sửa. Người thân (dù xem được thuốc) và admin gọi endpoint này nhận 403 `khong_co_quyen` và được ghi nhật ký `denied`.\n\nGửi một hoặc nhiều field; field không gửi giữ nguyên. Quy tắc:\n\n| Muốn | Gửi | Kết quả |\n|---|---|---|\n| Đổi liều mỗi lần | `quantity_per_dose` | Lịch không đổi |\n| Đổi cách uống, tồn kho | `intake_timing`, `stock_quantity` (gửi `null` để xóa giá trị) | Lịch không đổi |\n| Đổi hình, màu hiển thị | `pill_shape`, `pill_color` (gửi `null` để xóa giá trị) | Lịch không đổi |\n| Đổi giờ hoặc số lần/ngày (thuốc đang `scheduled`) | `intake_times` (có thể kèm `days_of_week`) | Đóng mọi lịch đang mở, tạo lịch mới cho từng giờ, đóng và mở theo **mốc hiệu lực** của `POST /medications/{id}/schedules`; `days_of_week` = giá trị gửi kèm, không gửi thì giữ của lịch cũ. Giờ đã có trong lịch cũ giữ `reminder_enabled` cũ; giờ mới bật nhắc. `doses_per_day` = số giờ mới |\n| Đổi ngày uống trong tuần (thuốc đang `scheduled`) | `days_of_week` | Đóng mọi lịch đang mở, tạo lại lịch cùng giờ, cùng `reminder_enabled`, với ngày mới, đóng và mở theo **mốc hiệu lực** của `POST /medications/{id}/schedules`. Ngày gửi trùng ngày hiện tại: không đổi lịch |\n| Đổi số lần tối đa (thuốc đang `as_needed`) | `max_doses_per_day` | `doses_per_day` = giá trị mới |\n| Chuyển sang dùng khi cần | `dosing_mode: as_needed` + `max_doses_per_day` | Đóng mọi lịch đang mở theo **mốc hiệu lực** của `POST /medications/{id}/schedules` |\n| Chuyển sang uống theo giờ | `dosing_mode: scheduled` + `intake_times` (có thể kèm `days_of_week`) | Tạo lịch mới, bật nhắc; `days_of_week` = giá trị gửi kèm, không gửi thì cả tuần |\n| Ngừng thuốc | chỉ `stopped: true` | Thuốc kết thúc tại thời điểm request (`ended_at`); mọi lịch đang mở đóng theo **mốc hiệu lực** của `POST /medications/{id}/schedules` |\n| Dùng lại thuốc đã ngừng | chỉ `stopped: false` | `status` = `active`, `ended_at` = `null`. Thuốc `scheduled`: mở lại lịch mới theo **mốc hiệu lực** của `POST /medications/{id}/schedules`, mỗi lịch lấy `intake_time`, `days_of_week`, `reminder_enabled` của một lịch đã đóng cùng lúc với lần ngừng gần nhất. Thuốc `as_needed`: không tạo lịch. Các field khác (liều, cách uống, tồn kho, `doses_per_day`) giữ nguyên |\n\nLịch cũ chỉ bị đóng, không bị xóa. Mọi thao tác đóng hoặc mở lịch ở endpoint này (đổi giờ, đổi ngày, chuyển chế độ, ngừng, dùng lại) theo **mốc hiệu lực** của `POST /medications/{id}/schedules`: thường là thời điểm request; lịch có liều đã xác nhận sớm đóng ngay sau giờ dự kiến của liều đó, và lịch mới cùng giờ không bắt đầu trước mốc ấy (tối đa khoảng 30 phút). Vì vậy `ended_at` của lịch đóng lúc ngừng có thể muộn hơn `ended_at` của thuốc. Một giờ dự kiến không bao giờ thuộc hai lịch của cùng thuốc. Ngày uống trong tuần là chung cho mọi giờ của thuốc. Thêm, sửa, xoá hay bật/tắt nhắc **từng** giờ dùng `/medications/{id}/schedules`.\n\nTrả 422 `medication_rule_violation` khi: body rỗng; `intake_times` hoặc `days_of_week` gửi cho thuốc sẽ là `as_needed`, hoặc `max_doses_per_day` gửi cho thuốc sẽ là `scheduled`; đổi `dosing_mode` mà thiếu field bắt buộc của chế độ mới; `stopped` đi kèm field khác. Thuốc đã ngừng: gửi lại `stopped: true` trả 200 và không đổi gì; gửi `stopped: false` để dùng lại; gửi field khác trả 422 `medication_stopped` (muốn sửa thì dùng lại trước). Thuốc đang dùng: gửi `stopped: false` trả 200 và không đổi gì. Thuốc `scheduled` đã ngừng mà không tìm được lịch nào đóng cùng lúc với lần ngừng (dữ liệu cũ) trả 422 `medication_rule_violation`; client hướng dẫn người dùng thêm thuốc mới.\n\nThuốc đã bị xoá trả 404 `user_medication_not_found`.\n\nIdempotent theo nội dung: gửi lại cùng body cho cùng kết quả cuối, trừ `intake_times` (mỗi lần gửi tạo lại lịch với `effective_from` mới; vô hại với nhắc lịch nhưng client không nên tự gửi lại khi không cần).",
         "security": [
           {
             "bearerAuth": []
@@ -1088,6 +1108,13 @@
                   "summary": "Dùng lại thuốc đã ngừng",
                   "value": {
                     "stopped": false
+                  }
+                },
+                "appearance": {
+                  "summary": "Đổi hình và màu hiển thị",
+                  "value": {
+                    "pill_shape": "capsule",
+                    "pill_color": "orange"
                   }
                 }
               }
@@ -1152,7 +1179,9 @@
                           "reminder_enabled": true,
                           "effective_from": "2026-10-01T09:15:02+07:00"
                         }
-                      ]
+                      ],
+                      "pill_shape": null,
+                      "pill_color": null
                     }
                   },
                   "stopped": {
@@ -1173,7 +1202,9 @@
                       "has_interaction_data": true,
                       "status": "stopped",
                       "ended_at": "2026-10-05T07:30:00+07:00",
-                      "schedules": []
+                      "schedules": [],
+                      "pill_shape": null,
+                      "pill_color": null
                     }
                   },
                   "reactivated": {
@@ -1226,7 +1257,9 @@
                           "reminder_enabled": true,
                           "effective_from": "2026-10-08T10:02:41+07:00"
                         }
-                      ]
+                      ],
+                      "pill_shape": null,
+                      "pill_color": null
                     }
                   }
                 }
@@ -1399,7 +1432,9 @@
                           "reminder_enabled": true,
                           "effective_from": "2026-10-01T09:15:02+07:00"
                         }
-                      ]
+                      ],
+                      "pill_shape": null,
+                      "pill_color": null
                     }
                   }
                 }
@@ -1548,7 +1583,9 @@
                           "reminder_enabled": true,
                           "effective_from": "2026-10-01T09:15:02+07:00"
                         }
-                      ]
+                      ],
+                      "pill_shape": null,
+                      "pill_color": null
                     }
                   },
                   "reminder_off": {
@@ -1601,7 +1638,9 @@
                           "reminder_enabled": true,
                           "effective_from": "2026-10-01T09:15:02+07:00"
                         }
-                      ]
+                      ],
+                      "pill_shape": null,
+                      "pill_color": null
                     }
                   }
                 }
@@ -1678,7 +1717,9 @@
                           "reminder_enabled": true,
                           "effective_from": "2026-10-01T09:15:02+07:00"
                         }
-                      ]
+                      ],
+                      "pill_shape": null,
+                      "pill_color": null
                     }
                   }
                 }
@@ -2488,6 +2529,105 @@
                 },
                 "example": {
                   "detail": "Internal server error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/catalog/medications/{id}": {
+      "get": {
+        "tags": [
+          "catalog"
+        ],
+        "operationId": "getCatalogMedication",
+        "summary": "Xem thông tin một thuốc trong danh mục",
+        "description": "Dùng cho màn \"Thông tin thuốc\" (S07-M2i): khi chọn thuốc để thêm, và khi xem một thuốc đang dùng (`UserMedication.medication.id`).\n\nTrả cả thuốc đã bị gỡ khỏi danh mục (xóa mềm), vì người bệnh có thể đang dùng thuốc đó (QD-36); tìm kiếm `GET /catalog/medications` vẫn bỏ qua các thuốc này nên không chọn mới được.\n\nField không có dữ liệu trả `null`; server không tự điền hay suy ra nội dung y khoa.\n\nPhân quyền: mọi phiên hợp lệ (mobile hoặc admin_web). Danh mục không phải dữ liệu sức khỏe, không kiểm consent và không ghi nhật ký truy cập.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Id thuốc trong danh mục.",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "example": 1007
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Thông tin thuốc.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogMedicationDetail"
+                },
+                "examples": {
+                  "full": {
+                    "summary": "Đủ thông tin",
+                    "value": {
+                      "id": 1007,
+                      "name": "Amlodipin 5mg",
+                      "active_ingredient": "Amlodipin besilat",
+                      "strength_text": "5 mg",
+                      "dosage_form": "Viên nén",
+                      "manufacturer_name": "Công ty CP Dược phẩm ABC",
+                      "manufacturer_country": "Việt Nam",
+                      "packaging_spec": "Hộp 3 vỉ x 10 viên",
+                      "source": "dav_drugbank"
+                    }
+                  },
+                  "sparse": {
+                    "summary": "Nguồn thiếu nhà sản xuất và quy cách",
+                    "value": {
+                      "id": 2210,
+                      "name": "Melas",
+                      "active_ingredient": "Hydroquinone",
+                      "strength_text": "0,04",
+                      "dosage_form": "Kem bôi da",
+                      "manufacturer_name": null,
+                      "manufacturer_country": null,
+                      "packaging_spec": null,
+                      "source": "qd_5948"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/CatalogMedicationNotFound"
+          },
+          "422": {
+            "description": "`id` không phải số nguyên dương.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                "example": {
+                  "detail": [
+                    {
+                      "loc": [
+                        "path",
+                        "id"
+                      ],
+                      "msg": "Input should be a valid integer, unable to parse string as an integer",
+                      "type": "int_parsing"
+                    }
+                  ]
                 }
               }
             }
@@ -11234,6 +11374,28 @@
           },
           "stock_quantity": {
             "$ref": "#/components/schemas/StockQuantity"
+          },
+          "pill_shape": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PillShape"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Tùy chọn. Không gửi hoặc `null` = chưa chọn; client hiển thị icon suy từ `dosage_form`."
+          },
+          "pill_color": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PillColor"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Tùy chọn. Không gửi hoặc `null` = chưa chọn."
           }
         }
       },
@@ -11276,6 +11438,28 @@
           "stopped": {
             "type": "boolean",
             "description": "Phải gửi một mình. `true`: ngừng thuốc. `false`: dùng lại thuốc đã ngừng. Xem bảng quy tắc ở mô tả `PATCH /medications/{id}`."
+          },
+          "pill_shape": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PillShape"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`null` để xóa giá trị."
+          },
+          "pill_color": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PillColor"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`null` để xóa giá trị."
           }
         }
       },
@@ -11371,7 +11555,9 @@
           "has_interaction_data",
           "status",
           "ended_at",
-          "schedules"
+          "schedules",
+          "pill_shape",
+          "pill_color"
         ],
         "properties": {
           "id": {
@@ -11430,6 +11616,28 @@
               "$ref": "#/components/schemas/MedicationSchedule"
             },
             "description": "Lịch đang mở, sắp theo `intake_time`. Rỗng với `as_needed` và với thuốc đã ngừng."
+          },
+          "pill_shape": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PillShape"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hình người bệnh đã chọn; `null` khi chưa chọn (kể cả thuốc tạo trước khi có field này)."
+          },
+          "pill_color": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PillColor"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Màu người bệnh đã chọn; `null` khi chưa chọn."
           }
         }
       },
@@ -16272,6 +16480,119 @@
           }
         ],
         "description": "Replace the physiological-state step. none_known removes all physiological_state links; reported replaces them with catalog_ids (category physiological_state only)."
+      },
+      "PillShape": {
+        "type": "string",
+        "enum": [
+          "capsule",
+          "round_tablet",
+          "oblong_tablet",
+          "softgel",
+          "effervescent",
+          "powder_sachet",
+          "syrup",
+          "drops",
+          "spray",
+          "injection_pen",
+          "topical"
+        ],
+        "description": "Hình người bệnh chọn để nhận ra thuốc trong app, chỉ để hiển thị; không thay `dosage_form` của danh mục và không dùng cho kiểm tra tương tác hay đơn vị liều. `capsule` viên nang, `round_tablet` viên tròn, `oblong_tablet` viên dài, `softgel` nang mềm, `effervescent` viên sủi, `powder_sachet` gói bột, `syrup` siro, `drops` thuốc nhỏ, `spray` thuốc xịt, `injection_pen` bút tiêm, `topical` thuốc bôi."
+      },
+      "PillColor": {
+        "type": "string",
+        "enum": [
+          "white",
+          "yellow",
+          "orange",
+          "pink",
+          "red",
+          "brown",
+          "blue",
+          "green",
+          "purple",
+          "gray"
+        ],
+        "description": "Màu người bệnh chọn cho thuốc, chỉ để hiển thị. `white` trắng, `yellow` vàng, `orange` cam, `pink` hồng, `red` đỏ, `brown` nâu, `blue` xanh lam, `green` xanh lá, `purple` tím, `gray` xám. Client tự chọn mã màu hiển thị."
+      },
+      "CatalogMedicationDetail": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Thông tin danh mục của một thuốc, cho màn \"Thông tin thuốc\" của Mobile. Chỉ gồm dữ liệu đã có trong danh mục; không có công dụng, liều tối đa hay cảnh báo.",
+        "required": [
+          "id",
+          "name",
+          "active_ingredient",
+          "strength_text",
+          "dosage_form",
+          "manufacturer_name",
+          "manufacturer_country",
+          "packaging_spec",
+          "source"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "active_ingredient": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Hoạt chất ghi trong danh mục, văn bản thô theo nguồn (có thể gồm nhiều hoạt chất). `null` khi nguồn không có. Chỉ để hiển thị; không dùng để kiểm tra tương tác."
+          },
+          "strength_text": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Hàm lượng, văn bản thô theo nguồn (ví dụ `500mg`, `0,04`). Server không chuẩn hóa hay quy đổi (QD-38)."
+          },
+          "dosage_form": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Dạng bào chế theo nguồn, ví dụ `Viên nén`, `Thuốc bột pha hỗn dịch uống`, `Dung dịch uống`. Client tự suy ra đơn vị liều hiển thị từ trường này."
+          },
+          "manufacturer_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Nhà sản xuất; `null` khi nguồn không có."
+          },
+          "manufacturer_country": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Nước sản xuất; `null` khi nguồn không có."
+          },
+          "packaging_spec": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Quy cách đóng gói, ví dụ `Hộp 10 vỉ x 10 viên`; `null` khi nguồn không có."
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "dav_drugbank",
+              "qd_5948",
+              "duoc_thu_qg",
+              null
+            ],
+            "description": "Nguồn dữ liệu: `dav_drugbank` Cơ sở dữ liệu dược Cục Quản lý Dược, `qd_5948` danh mục theo Quyết định 5948, `duoc_thu_qg` Dược thư Quốc gia Việt Nam; `null` khi nhập tay. Client tự đặt nhãn hiển thị."
+          }
+        }
       }
     },
     "responses": {
@@ -17099,6 +17420,19 @@
                   "detail": "refresh_limit_reached"
                 }
               }
+            }
+          }
+        }
+      },
+      "CatalogMedicationNotFound": {
+        "description": "Không có thuốc nào trong danh mục với id này.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "example": {
+              "detail": "catalog_medication_not_found"
             }
           }
         }
