@@ -117,3 +117,23 @@ is displayed as pending through the deadline without rewriting the stored row.
 The rate is `100 * (taken + late) / counted`, rounded half up to two decimal
 places, or `null` when `counted=0`. Overall rates use overall counts.
 The complete schemas, conditional rules and examples are in `openapi.json`.
+
+## Medication catalog detail and pill appearance
+
+`GET /catalog/medications/{id}` returns `CatalogMedicationDetail` for the mobile
+"drug information" sheet: the summary fields plus nullable `manufacturer_name`,
+`manufacturer_country`, `packaging_spec` and `source`. Any valid session may call it;
+the catalog is not patient health data, so there is no consent check or access log.
+Soft-deleted catalog entries are still returned because patients may already take
+them; search keeps excluding them. Unknown ids return 404
+`catalog_medication_not_found`. The server never fills in or derives medical content
+(indications, maximum dose, warnings are not part of this response).
+
+`pill_shape` (`PillShape`) and `pill_color` (`PillColor`) are optional, display-only
+choices on a patient's medication. `POST /medications` and `PATCH /medications/{id}`
+accept them (omit or `null` = not chosen; `null` in PATCH clears), and every
+`UserMedication` response carries both, `null` when unset. They do not replace the
+catalog `dosage_form` and play no part in dose units or interaction checks. Writes
+stay patient-only and reads keep the existing PEP rules of those endpoints, so linked
+family members see the values but cannot change them. Existing clients that never
+send the fields keep working.
