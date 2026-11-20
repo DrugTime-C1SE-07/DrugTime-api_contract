@@ -72,6 +72,26 @@ returns `409 condition_already_exists`; a missing catalog condition returns
 or offline queue is introduced: after an uncertain POST outcome, read the profile
 and reconcile before retrying.
 
+### Chronic diseases vs physiological states
+
+Pregnancy and breastfeeding are physiological states, not chronic diseases.
+Every catalog item (`GET /conditions`) and every condition link (`GET /profile`,
+POST/PATCH `/profile/conditions*`) carries `category`: `chronic_disease` or
+`physiological_state`, mapped from `conditions.medical_nature`. Clients must not
+show or count physiological states as chronic diseases.
+
+`GET/PUT /profile/health-setup` has three steps: `allergies`, `conditions`
+(chronic diseases only, plus custom names) and `physiological_states`
+(catalog-only, no custom names). Each step is `unreported`, `none_known` or
+`reported`; `none_known` is stored explicitly for physiological states too.
+`conditions.catalog_ids` must be chronic diseases and
+`physiological_states.catalog_ids` must be physiological states; a mismatch
+returns `422 condition_category_mismatch` without mutation. A step's
+`none_known` and its links never affect the other step: adding a physiological
+link (also via legacy `/profile/conditions`) does not clear the conditions
+`none_known` declaration. The server does not filter by gender; clients decide
+whether to show the physiological step.
+
 Health JSON success responses (`GET /profile`, POST/PATCH condition links) carry
 `Cache-Control: no-store`. This contract does not promise that header on all
 profile errors or on bodyless PUT/DELETE responses. Consult each operation's
