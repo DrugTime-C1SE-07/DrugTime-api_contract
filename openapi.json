@@ -2874,7 +2874,7 @@
         ],
         "operationId": "requestAccountDeletionOtp",
         "summary": "Gửi OTP xác nhận xóa tài khoản",
-        "description": "Chỉ chính chủ đã đăng nhập bằng phiên mobile. Không nhận body, query hoặc định danh tài khoản từ client. Server gửi OTP 6 chữ số đến email đăng nhập đã xác minh của chính tài khoản. Thao tác gửi OTP không tạo yêu cầu xóa. Challenge gắn với tài khoản và mục đích xóa. Gửi lại thành công thay challenge cũ; server áp dụng giới hạn gửi và thử ở cấp tài khoản. Client dùng expires_at để hiển thị thời hạn.",
+        "description": "Gửi OTP tới email đã xác minh. Hiệu lực 5 phút, gửi lại sau 60 giây, tối đa 5 lần/giờ; sai 5 lần trong cửa sổ 15 phút thì khóa xác thực theo Retry-After. Không đặt lại bộ đếm khi gửi lại. 429 deletion_otp_send_rate_limited cho giới hạn gửi; deletion_otp_rate_limited cho giới hạn xác thực.",
         "security": [
           {
             "bearerAuth": []
@@ -2974,7 +2974,6 @@
             "description": "Body sai cấu trúc hoặc có tham số không được hỗ trợ.",
             "headers": {
               "Cache-Control": {
-                "description": "Không lưu phản hồi vào cache.",
                 "schema": {
                   "type": "string",
                   "const": "no-store"
@@ -3005,10 +3004,15 @@
             "description": "Vượt giới hạn gửi hoặc thử OTP. Chờ hết thời gian giới hạn rồi thử lại.",
             "headers": {
               "Cache-Control": {
-                "description": "Không lưu phản hồi vào cache.",
                 "schema": {
                   "type": "string",
                   "const": "no-store"
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
                 }
               }
             },
@@ -3055,7 +3059,7 @@
         ],
         "operationId": "createAccountDeletionRequest",
         "summary": "Tiếp nhận yêu cầu xóa tài khoản",
-        "description": "Chỉ chính chủ đã đăng nhập bằng phiên mobile. Không nhận query hoặc định danh tài khoản từ client. Cần challenge còn hạn và OTP dùng một lần gắn với chính tài khoản và mục đích xóa. OTP đăng nhập không hợp lệ cho thao tác này. Chỉ trả thành công khi kết quả đã lưu bền vững. Mỗi tài khoản có tối đa một yêu cầu mở. Một lần xác nhận hợp lệ với OTP mới khi đã có yêu cầu chờ xóa trả 200 và giữ nguyên mốc thời gian. Hai lần dùng cùng challenge không thể cùng tiêu thụ OTP; lần dùng lại trả 422. Nếu mất phản hồi, xin mã mới rồi xác nhận lại để nhận trạng thái đã lưu. Không tự động thử lại cùng OTP. Khi yêu cầu đã đến hạn và chờ xử lý, xác nhận bằng OTP mới trả 409; không gia hạn hoặc tạo yêu cầu mới.\n\nHạn xóa bằng requested_at + 30 × 24 giờ. Trong khi yêu cầu còn hiệu lực, người thân không được truy cập thông tin về tài khoản đó, liên kết và consent được giữ. Không tạo gợi ý món ăn mới. Đăng nhập thành công trước hạn hủy yêu cầu qua luồng đăng nhập; đến hạn mà yêu cầu chưa hủy, hệ thống tự động xử lý xóa. Mốc scheduled_deletion_at là thời điểm đủ điều kiện xóa, không phải xác nhận đã xóa xong.",
+        "description": "Xác nhận cuối sau OTP. Gọi lặp cùng challenge đã dùng trả 200 và thời hạn đã lưu nếu yêu cầu vẫn còn hiệu lực. Không tạo lại yêu cầu đã hủy. Chờ 30 ngày; không thay đổi thời hạn khi gọi lặp.",
         "security": [
           {
             "bearerAuth": []
@@ -3180,10 +3184,22 @@
             "description": "Body sai cấu trúc dùng ValidationError. OTP sai, hết hạn, đã dùng, bị thay thế hoặc challenge không hợp lệ cho tài khoản và thao tác này đều trả deletion_otp_invalid.",
             "headers": {
               "Cache-Control": {
-                "description": "Không lưu phản hồi vào cache.",
                 "schema": {
                   "type": "string",
                   "const": "no-store"
+                }
+              },
+              "X-OTP-Attempts-Remaining": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 5
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
                 }
               }
             },
@@ -3209,10 +3225,15 @@
             "description": "Vượt giới hạn gửi hoặc thử OTP. Chờ hết thời gian giới hạn rồi thử lại.",
             "headers": {
               "Cache-Control": {
-                "description": "Không lưu phản hồi vào cache.",
                 "schema": {
                   "type": "string",
                   "const": "no-store"
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
                 }
               }
             },
@@ -3255,11 +3276,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CreateDeletionRequest"
-              },
-              "example": {
-                "challenge_id": "01d5b29f-135b-43d3-a742-54d70be99d4c",
-                "otp": "123456"
+                "$ref": "#/components/schemas/ConfirmDeletionRequest"
               }
             }
           }
@@ -10282,6 +10299,535 @@
           }
         }
       }
+    },
+    "/data-deletion-requests/otp/verify": {
+      "post": {
+        "tags": [
+          "consent",
+          "consent"
+        ],
+        "summary": "Verify Deletion Otp",
+        "operationId": "verifyAccountDeletionOtp",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDeletionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            }
+          },
+          "401": {
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "X-OTP-Attempts-Remaining": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 5
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/DeletionValidationError"
+                    }
+                  ],
+                  "title": "Response 422 Verifyaccountdeletionotp"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "description": ""
+      }
+    },
+    "/data-deletion-requests/current": {
+      "get": {
+        "tags": [
+          "consent",
+          "consent"
+        ],
+        "summary": "Current Deletion Request",
+        "operationId": "getCurrentAccountDeletionRequest",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/PendingDeletionRequest"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Getcurrentaccountdeletionrequest"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            }
+          },
+          "401": {
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletionValidationError"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "description": "Tra cứu theo phiên mobile; null nếu không có yêu cầu. Đăng nhập và tra cứu không tự hủy. Cache-Control: no-store."
+      }
+    },
+    "/data-deletion-requests/current/cancel": {
+      "post": {
+        "tags": [
+          "consent",
+          "consent"
+        ],
+        "summary": "Cancel Deletion Request",
+        "operationId": "cancelAccountDeletionRequest",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            }
+          },
+          "401": {
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletionValidationError"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "description": "Hủy trước scheduled_deletion_at; 204 kể cả khi đã hủy, 409 deletion_request_due nếu đã đến hạn. Không thay đổi liên kết hoặc consent. Cùng khóa với worker; chỉ trả thành công sau commit."
+      }
     }
   },
   "components": {
@@ -13802,14 +14348,25 @@
           "challenge_id": {
             "type": "string",
             "format": "uuid",
-            "description": "Định danh xác nhận OTP, do server cấp."
+            "description": "Server-issued OTP challenge identifier."
           },
           "otp": {
             "type": "string",
-            "pattern": "^[0-9]{6}$",
-            "minLength": 6,
-            "maxLength": 6,
+            "minLength": 1,
+            "maxLength": 128,
             "writeOnly": true
+          }
+        }
+      },
+      "ConfirmDeletionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["challenge_id"],
+        "properties": {
+          "challenge_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "OTP challenge identifier verified by Supabase Auth."
           }
         }
       },
@@ -14814,6 +15371,55 @@
             "description": "Trạng thái hiện tại của các ảnh được hỏi và còn tồn tại, theo thứ tự `ids` trong query. Id không tồn tại bị bỏ qua (không lỗi)."
           }
         }
+      },
+      "DeletionValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/DeletionValidationErrorItem"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "title": "DeletionValidationError"
+      },
+      "DeletionValidationErrorItem": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Loc"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Msg"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "DeletionValidationErrorItem"
       }
     },
     "responses": {
