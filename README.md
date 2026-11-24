@@ -137,3 +137,18 @@ catalog `dosage_form` and play no part in dose units or interaction checks. Writ
 stay patient-only and reads keep the existing PEP rules of those endpoints, so linked
 family members see the values but cannot change them. Existing clients that never
 send the fields keep working.
+
+## Pending account deletion (`403 account_pending_deletion`)
+
+When a patient has an active deletion request (`cho_xoa`), the backend PEP denies all
+self health-data and dose-sync endpoints with HTTP `403` and
+`{"detail": "account_pending_deletion"}`, recording a durable `denied` entry in
+`access_logs` in a separate transaction. Only `/data-deletion-requests/*` and logout
+remain usable while deletion is pending. Linked family members attempting to access
+that patient's health data continue to receive `403` `khong_co_quyen` so the
+patient's deletion status is not disclosed.
+
+On `POST /doses/batch`, a pending-deletion patient receives HTTP `403`
+`{"detail": "account_pending_deletion"}` at the request level (no items written);
+mobile clients must stop auto-uploading without deleting queued local records (QD-07)
+and re-check `GET /data-deletion-requests/current`.

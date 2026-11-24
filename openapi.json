@@ -6783,7 +6783,7 @@
             }
           },
           "403": {
-            "description": "Không đủ quyền; không đọc lịch sử. Trường hợp patient tồn tại ghi audit denied; patient không tồn tại không ghi audit do ràng buộc khóa ngoại. Chính chủ thiếu health_data: consent_revoked. Người thân thiếu liên kết, chia sẻ hoặc một consent, hoặc admin: khong_co_quyen.",
+            "description": "Không đủ quyền; không đọc lịch sử. Trường hợp patient tồn tại ghi audit `denied` ở transaction riêng; patient không tồn tại không ghi audit do ràng buộc khóa ngoại. Chính chủ đang có yêu cầu xóa tài khoản chờ xử lý: `account_pending_deletion`. Chính chủ thiếu `health_data`: `consent_revoked`. Người thân thiếu liên kết, chia sẻ hoặc một consent, hoặc bệnh nhân đang chờ xóa, hoặc admin: `khong_co_quyen`.",
             "headers": {
               "Cache-Control": {
                 "description": "Không lưu dữ liệu sức khỏe trong cache.",
@@ -6807,6 +6807,11 @@
                   "self_consent_revoked": {
                     "value": {
                       "detail": "consent_revoked"
+                    }
+                  },
+                  "account_pending_deletion": {
+                    "value": {
+                      "detail": "account_pending_deletion"
                     }
                   }
                 }
@@ -6902,7 +6907,7 @@
         ],
         "operationId": "confirmDoseBatch",
         "summary": "Gửi mẻ xác nhận liều của chính mình (đồng bộ hàng chờ)",
-        "description": "Chỉ người bệnh ghi liều của chính mình (QD-27); người thân và admin nhận `forbidden_schedule` ở từng mục. Mỗi mục xử lý độc lập và trả kết quả riêng; HTTP 200 kể cả khi có mục lỗi (QD-07, Ch.10). Toàn bộ mẻ nằm trong một transaction: lỗi hạ tầng (503) thì không mục nào được ghi.\n\n**Trạng thái tính từ taken_at** (QD-03, QD-10), so tới micro giây, không làm tròn:\n- taken_at < scheduled_at − 30': lỗi `taken_at_too_early`, không ghi.\n- [scheduled_at − 30', scheduled_at + 30']: `da_uong`.\n- (scheduled_at + 30', scheduled_at + 120']: `uong_tre`.\n- > scheduled_at + 120': ghi `bo_lo`, không lưu taken_at, `adherence_counted = false`.\n\n**Liều đã có bản ghi** (khóa `(schedule_id, scheduled_at)`):\n- Đang `bo_lo` (Worker đã ghi sau khi xác minh, hoặc xác nhận trước đó quá 120'): cập nhật theo trạng thái tính từ taken_at của mục này. `da_uong`/`uong_tre` thay thế `bo_lo`; `bo_lo` thì giữ. (Task 3.19: trước đây luôn thành `uong_tre`.)\n- Đang `da_uong`/`uong_tre`: không ghi đè; trả `synced` với trạng thái đã lưu.\n\n**Idempotency:** gửi lại cùng `client_uuid` với cùng nội dung trả lại kết quả đã lưu; khác nội dung thì `client_uuid_conflict` (409), giữ bản đã lưu (QD-14). Chạy đồng thời với Worker quét bỏ lỡ: luôn còn đúng một bản ghi và trạng thái cuối tính theo taken_at, bất kể bên nào commit trước.\n\n**Phía client** (QD-07, QD-18): một mẻ đang gửi mỗi thiết bị. Mục `synced` đánh dấu đã lưu máy chủ. Mục lỗi 404/409/422 được giữ lại với lỗi, không tự gửi lại. Lỗi 403 ở một mục thì dừng tự gửi. 401, 503, 408, 429, lỗi mạng thì thử lại có giãn cách. Khi **mọi** mục trong hàng chờ đã có kết quả cuối (`synced` hoặc lỗi 404/409/422), gọi `POST /doses/sync-checkpoints`.\n\nNgười gọi được kiểm quyền ở từng mục theo PEP; không cache quyết định.",
+        "description": "Chỉ người bệnh ghi liều của chính mình (QD-27); người thân và admin nhận `forbidden_schedule` ở từng mục. Mỗi mục xử lý độc lập và trả kết quả riêng; HTTP 200 kể cả khi có mục lỗi (QD-07, Ch.10). Toàn bộ mẻ nằm trong một transaction: lỗi hạ tầng (503) thì không mục nào được ghi.\n\n**Trạng thái tính từ taken_at** (QD-03, QD-10), so tới micro giây, không làm tròn:\n- taken_at < scheduled_at − 30': lỗi `taken_at_too_early`, không ghi.\n- [scheduled_at − 30', scheduled_at + 30']: `da_uong`.\n- (scheduled_at + 30', scheduled_at + 120']: `uong_tre`.\n- > scheduled_at + 120': ghi `bo_lo`, không lưu taken_at, `adherence_counted = false`.\n\n**Liều đã có bản ghi** (khóa `(schedule_id, scheduled_at)`):\n- Đang `bo_lo` (Worker đã ghi sau khi xác minh, hoặc xác nhận trước đó quá 120'): cập nhật theo trạng thái tính từ taken_at của mục này. `da_uong`/`uong_tre` thay thế `bo_lo`; `bo_lo` thì giữ. (Task 3.19: trước đây luôn thành `uong_tre`.)\n- Đang `da_uong`/`uong_tre`: không ghi đè; trả `synced` với trạng thái đã lưu.\n\n**Idempotency:** gửi lại cùng `client_uuid` với cùng nội dung trả lại kết quả đã lưu; khác nội dung thì `client_uuid_conflict` (409), giữ bản đã lưu (QD-14). Chạy đồng thời với Worker quét bỏ lỡ: luôn còn đúng một bản ghi và trạng thái cuối tính theo taken_at, bất kể bên nào commit trước.\n\n**Phía client** (QD-07, QD-18): một mẻ đang gửi mỗi thiết bị. Mục `synced` đánh dấu đã lưu máy chủ. Mục lỗi 404/409/422 được giữ lại với lỗi, không tự gửi lại. Lỗi 403 ở một mục thì dừng tự gửi. 401, 503, 408, 429, lỗi mạng thì thử lại có giãn cách. Khi **mọi** mục trong hàng chờ đã có kết quả cuối (`synced` hoặc lỗi 404/409/422), gọi `POST /doses/sync-checkpoints`.\n\nNgười gọi được kiểm quyền ở từng mục theo PEP; không cache quyết định.\n\n**Tài khoản đang chờ xóa (`cho_xoa`):** nếu tài khoản người gọi đang có yêu cầu xóa chờ xử lý, request bị từ chối ngay ở mức HTTP `403` với `detail = \"account_pending_deletion\"` (không ghi mục nào, ghi `denied` vào nhật ký truy cập ở transaction riêng). Client phải dừng tự gửi, giữ nguyên toàn bộ bản ghi trong hàng chờ cục bộ (QD-07) và kiểm tra lại `GET /data-deletion-requests/current`.",
         "security": [
           {
             "bearerAuth": []
@@ -7043,6 +7048,23 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "`account_pending_deletion`: tài khoản người bệnh đang có yêu cầu xóa chờ xử lý (`cho_xoa`); không ghi mục nào và ghi `denied` vào nhật ký truy cập ở transaction riêng. Client dừng tự gửi, giữ nguyên hàng chờ cục bộ (QD-07) và hiển thị màn hình chờ xóa.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                },
+                "examples": {
+                  "account_pending_deletion": {
+                    "value": {
+                      "detail": "account_pending_deletion"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -7068,7 +7090,7 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "description": "`consent_revoked`: người gọi chưa có (hoặc đã rút) consent `health_data`; không ghi checkpoint. `khong_co_quyen`: tài khoản admin. Lần bị từ chối được ghi nhật ký theo quy tắc chung của PEP.",
+            "description": "`account_pending_deletion`: tài khoản người gọi đang có yêu cầu xóa chờ xử lý (`cho_xoa`); không ghi checkpoint. `consent_revoked`: người gọi chưa có (hoặc đã rút) consent `health_data`; không ghi checkpoint. `khong_co_quyen`: tài khoản admin. Lần bị từ chối được ghi nhật ký `denied` ở transaction riêng theo quy tắc chung của PEP.",
             "content": {
               "application/json": {
                 "schema": {
@@ -7083,6 +7105,11 @@
                   "admin": {
                     "value": {
                       "detail": "khong_co_quyen"
+                    }
+                  },
+                  "account_pending_deletion": {
+                    "value": {
+                      "detail": "account_pending_deletion"
                     }
                   }
                 }
@@ -9582,7 +9609,7 @@
             }
           },
           "403": {
-            "description": "khong_co_quyen",
+            "description": "`account_pending_deletion`: tài khoản người bệnh đang có yêu cầu xóa chờ xử lý (`cho_xoa`). `khong_co_quyen`: tài khoản admin hoặc không đủ quyền truy cập. Ghi `denied` vào nhật ký truy cập ở transaction riêng.",
             "headers": {
               "Cache-Control": {
                 "schema": {
@@ -9596,8 +9623,17 @@
                 "schema": {
                   "$ref": "#/components/schemas/ErrorDetail"
                 },
-                "example": {
-                  "detail": "khong_co_quyen"
+                "examples": {
+                  "no_access": {
+                    "value": {
+                      "detail": "khong_co_quyen"
+                    }
+                  },
+                  "account_pending_deletion": {
+                    "value": {
+                      "detail": "account_pending_deletion"
+                    }
+                  }
                 }
               }
             }
@@ -9723,7 +9759,7 @@
             }
           },
           "403": {
-            "description": "khong_co_quyen",
+            "description": "`account_pending_deletion`: tài khoản người bệnh đang có yêu cầu xóa chờ xử lý (`cho_xoa`). `khong_co_quyen`: tài khoản admin hoặc không đủ quyền truy cập. Ghi `denied` vào nhật ký truy cập ở transaction riêng.",
             "headers": {
               "Cache-Control": {
                 "schema": {
@@ -9737,8 +9773,17 @@
                 "schema": {
                   "$ref": "#/components/schemas/ErrorDetail"
                 },
-                "example": {
-                  "detail": "khong_co_quyen"
+                "examples": {
+                  "no_access": {
+                    "value": {
+                      "detail": "khong_co_quyen"
+                    }
+                  },
+                  "account_pending_deletion": {
+                    "value": {
+                      "detail": "account_pending_deletion"
+                    }
+                  }
                 }
               }
             }
@@ -9883,7 +9928,7 @@
             }
           },
           "403": {
-            "description": "khong_co_quyen",
+            "description": "`account_pending_deletion`: tài khoản người bệnh đang có yêu cầu xóa chờ xử lý (`cho_xoa`). `khong_co_quyen`: tài khoản admin hoặc không đủ quyền truy cập. Ghi `denied` vào nhật ký truy cập ở transaction riêng.",
             "headers": {
               "Cache-Control": {
                 "schema": {
@@ -9897,8 +9942,17 @@
                 "schema": {
                   "$ref": "#/components/schemas/ErrorDetail"
                 },
-                "example": {
-                  "detail": "khong_co_quyen"
+                "examples": {
+                  "no_access": {
+                    "value": {
+                      "detail": "khong_co_quyen"
+                    }
+                  },
+                  "account_pending_deletion": {
+                    "value": {
+                      "detail": "account_pending_deletion"
+                    }
+                  }
                 }
               }
             }
@@ -15271,7 +15325,9 @@
       "ConfirmDeletionRequest": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["challenge_id"],
+        "required": [
+          "challenge_id"
+        ],
         "properties": {
           "challenge_id": {
             "type": "string",
@@ -16610,7 +16666,7 @@
         }
       },
       "Forbidden": {
-        "description": "Không có quyền. `detail`:\n- `consent_revoked`: người bệnh tự truy cập nhưng chưa có (hoặc đã rút) consent `health_data`. Client mời người dùng đồng ý rồi gọi `POST /consents` với `purpose = health_data`; request kế tiếp sau khi đồng ý thành công sẽ được phép.\n- `khong_co_quyen`: người khác không có quyền với thuốc hoặc lịch uống của người bệnh này (kể cả **admin**, QD-32), hoặc người thân cố ghi. Lần truy cập được ghi `denied` vào nhật ký truy cập.",
+        "description": "Không có quyền. `detail`:\n- `account_pending_deletion`: tài khoản người bệnh đang có yêu cầu xóa chờ xử lý (`cho_xoa`). Chính chủ bị chặn mọi endpoint sức khỏe và đồng bộ (chỉ dùng được `/data-deletion-requests/*` và đăng xuất); lần truy cập được ghi `denied` vào nhật ký truy cập ở transaction riêng. Client kích hoạt màn hình chờ xóa.\n- `consent_revoked`: người bệnh tự truy cập nhưng chưa có (hoặc đã rút) consent `health_data`. Client mời người dùng đồng ý rồi gọi `POST /consents` với `purpose = health_data`; request kế tiếp sau khi đồng ý thành công sẽ được phép.\n- `khong_co_quyen`: người khác không có quyền với thuốc hoặc lịch uống của người bệnh này (kể cả **admin**, QD-32, hoặc khi bệnh nhân đang chờ xóa), hoặc người thân cố ghi. Lần truy cập được ghi `denied` vào nhật ký truy cập.",
         "content": {
           "application/json": {
             "schema": {
@@ -16625,6 +16681,11 @@
               "consent_revoked": {
                 "value": {
                   "detail": "consent_revoked"
+                }
+              },
+              "account_pending_deletion": {
+                "value": {
+                  "detail": "account_pending_deletion"
                 }
               }
             }
@@ -17264,14 +17325,28 @@
         }
       },
       "ProfileForbidden": {
-        "description": "Current health_data consent is absent/revoked or PEP denies access. No medical data is returned and no business change is committed. Consent is rechecked on every request. Persist minimal denied audit metadata even if the business transaction rolls back.",
+        "description": "Current health_data consent is absent/revoked, the account has a pending deletion request (`account_pending_deletion`), or PEP denies access (`khong_co_quyen`). No medical data is returned and no business change is committed. Authorization is rechecked on every request. Persist minimal denied audit metadata in a separate transaction even if the business transaction rolls back.",
         "content": {
           "application/json": {
             "schema": {
               "$ref": "#/components/schemas/ErrorDetail"
             },
-            "example": {
-              "detail": "consent_revoked"
+            "examples": {
+              "consent_revoked": {
+                "value": {
+                  "detail": "consent_revoked"
+                }
+              },
+              "account_pending_deletion": {
+                "value": {
+                  "detail": "account_pending_deletion"
+                }
+              },
+              "no_access": {
+                "value": {
+                  "detail": "khong_co_quyen"
+                }
+              }
             }
           }
         }
@@ -17370,7 +17445,7 @@
         }
       },
       "MealSuggestionForbidden": {
-        "description": "Không có quyền; AI không được gọi, không có gì được lưu. `detail`:\n- `consent_revoked`: người bệnh chưa có (hoặc đã rút) consent `ai_meal`. Client mời người dùng đồng ý rồi gọi `POST /consents` với `purpose = ai_meal`; request kế tiếp sau khi đồng ý sẽ được phép.\n- `khong_co_quyen`: người gọi không phải chính người bệnh (kể cả người thân có liên kết và **admin**), hoặc người bệnh đang có yêu cầu xóa tài khoản chờ xử lý, hoặc `patient_id` không ứng với tài khoản nào.\n\nMọi lần từ chối được ghi `denied` vào nhật ký truy cập, trừ khi `patient_id` không tồn tại.",
+        "description": "Không có quyền; AI không được gọi, không có gì được lưu. `detail`:\n- `account_pending_deletion`: người bệnh đang có yêu cầu xóa tài khoản chờ xử lý (`cho_xoa`).\n- `consent_revoked`: người bệnh chưa có (hoặc đã rút) consent `ai_meal`. Client mời người dùng đồng ý rồi gọi `POST /consents` với `purpose = ai_meal`; request kế tiếp sau khi đồng ý sẽ được phép.\n- `khong_co_quyen`: người gọi không phải chính người bệnh (kể cả người thân có liên kết và **admin**), hoặc `patient_id` không ứng với tài khoản nào.\n\nMọi lần từ chối được ghi `denied` vào nhật ký truy cập ở transaction riêng, trừ khi `patient_id` không tồn tại.",
         "content": {
           "application/json": {
             "schema": {
@@ -17385,6 +17460,11 @@
               "consent_revoked": {
                 "value": {
                   "detail": "consent_revoked"
+                }
+              },
+              "account_pending_deletion": {
+                "value": {
+                  "detail": "account_pending_deletion"
                 }
               }
             }
